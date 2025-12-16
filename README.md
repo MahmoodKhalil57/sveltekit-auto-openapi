@@ -1,337 +1,140 @@
-# sveltekit-auto-openapi
+# SvelteKit Auto OpenAPI
 
-<!-- automd:badges bundlejs -->
+<p align="center">
+  <img src="https://img.shields.io/npm/v/sveltekit-auto-openapi?style=for-the-badge&color=orange" alt="npm version" />
+  <img src="https://img.shields.io/npm/dm/sveltekit-auto-openapi?style=for-the-badge&color=blue" alt="downloads" />
+  <img src="https://img.shields.io/bundlejs/size/sveltekit-auto-openapi?style=for-the-badge&color=green" alt="bundle size" />
+</p>
 
-[![npm version](https://img.shields.io/npm/v/sveltekit-auto-openapi)](https://npmjs.com/package/sveltekit-auto-openapi)
-[![npm downloads](https://img.shields.io/npm/dm/sveltekit-auto-openapi)](https://npm.chart.dev/sveltekit-auto-openapi)
-[![bundle size](https://img.shields.io/bundlejs/size/sveltekit-auto-openapi)](https://bundlejs.com/?q=sveltekit-auto-openapi)
+<p align="center">
+  <strong>Type-safe OpenAPI generation and runtime validation for SvelteKit.</strong><br/>
+  Write standard SvelteKit code, get documented APIs for free.
+</p>
 
-<!-- /automd -->
+---
 
-## Install
+## ⚡ Features
 
-<!-- automd:pm-i -->
+- **🔎 Automatic Inference**: Generates OpenAPI schemas by analyzing your `request.json<Type>()` calls.
+- **🛡️ Runtime Validation**: Validates Headers, Cookies, Query Params, and Body using [Zod](https://zod.dev).
+- **📘 Interactive Documentation**: Built-in [Scalar](https://scalar.com) integration for beautiful API references.
+- **⚡ Zero Boilerplate**: Works directly with standard SvelteKit `+server.ts` files.
+- **🔄 Hot Reload**: OpenAPI schemas update instantly as you modify your routes.
 
-```sh
-# ✨ Auto-detect
-npx nypm install sveltekit-auto-openapi
+## 🚀 Quick Start
 
-# npm
+### 1. Install
+
+```bash
 npm install sveltekit-auto-openapi
-
-# yarn
-yarn add sveltekit-auto-openapi
-
-# pnpm
-pnpm install sveltekit-auto-openapi
-
-# bun
-bun install sveltekit-auto-openapi
-
-# deno
-deno install sveltekit-auto-openapi
 ```
 
-<!-- /automd -->
+```bash
+pnpm install sveltekit-auto-openapi
+```
 
-## Setup
+```bash
+bun install sveltekit-auto-openapi
+```
 
-### Generate openapi schema
+### 2\. Add Vite Plugin
 
-Add the plugin to `vite.config.ts` to generate openapi schema
+Add the plugin to `vite.config.ts` to enable schema generation.
 
 ```ts
-// vite.config.ts
+import { sveltekit } from "@sveltejs/kit/vite";
 import svelteOpenApi from "sveltekit-auto-openapi/plugin";
 
-export default defineConfig({
-  plugins: [
-    // ...
-    svelteOpenApi(),
-  ],
-});
+export default {
+  plugins: [sveltekit(), svelteOpenApi()],
+};
 ```
 
-### Host schema with scalar
+### 3\. Add Validation Hook
 
-Add the ScalarModule to `src/routes/api-docs/[slug]/+server.ts` to host openapi schema and scalar docs
-
-```ts
-// src/routes/api-docs/[slug]/+server.ts
-import ScalarModule from "sveltekit-auto-openapi/scalar-module";
-
-const scalarModule = ScalarModule({
-  openApiOpts: {
-    openapi: "3.0.0",
-    info: {
-      title: "My API",
-      version: "1.0.0",
-    },
-  },
-});
-
-export const _config = scalarModule._config;
-export const GET = scalarModule.GET;
-```
-
-### Validate server schemas
-
-Add the SchemaValidationHook to `src/hooks.server.ts` to run request and response validation
+Add the hook to `src/hooks.server.ts` to enable runtime validation.
 
 ```ts
-// src/hooks.server.ts
 import { sequence } from "@sveltejs/kit/hooks";
 import SchemaValidationHook from "sveltekit-auto-openapi/schema-validation-hook";
 
-const schemaValidationHook = SchemaValidationHook();
-
-export const handle = sequence(
-  //...
-  schemaValidationHook
-);
+export const handle = sequence(SchemaValidationHook());
 ```
 
-## Usage
+### 4\. Create API Docs Route
 
-### Defining Validation Schemas (minimal changes)
-
-Schemas get automatically inferred from the route
-To be able to generate input schema, make sure to provide the type in the json generic `await request.json<INPUT_TYPE>()`
+Expose your documentation at `src/routes/api-docs/[slug]/+server.ts`.
 
 ```ts
-// src/routes/api/users/+server.ts
-import { json } from "@sveltejs/kit";
+import ScalarModule from "sveltekit-auto-openapi/scalar-module";
 
+const scalar = ScalarModule({
+  openApiOpts: {
+    info: { title: "My App API", version: "1.0.0" },
+  },
+});
+
+export const { GET } = scalar;
+```
+
+---
+
+## 💡 Usage Scenarios
+
+### Level 1: Automatic (AST Inference)
+
+Just write your code. We infer the schema from your generic types.
+
+```ts
+// src/routes/api/auth/+server.ts
 export async function POST({ request }) {
-  const { description } = await request.json<{ description: string }>();
-
-  return json({ description }, { status: 201 });
+  // The schema is automatically generated from this generic!
+  const { email } = await request.json<{ email: string }>();
+  return json({ success: true });
 }
 ```
 
-### Defining Validation Schemas (recommended)
+### Level 2: Strict (Zod Validation)
 
-You can also define schemas for route validation and more consistent schema infrence
+Export a `_config` object to enforce runtime validation and detailed docs.
 
 ```ts
-// src/routes/api/users/[id]/+server.ts
-import { json } from "@sveltejs/kit";
 import { z } from "zod";
 
 export const _config = {
   validation: {
     POST: {
       input: {
-        body: z.object({
-          username: z.string().min(3),
-          email: z.string().email(),
-          age: z.number().int().optional(),
-        }),
+        body: z.object({ email: z.string().email() }),
+        headers: z.object({ "x-api-key": z.string() }),
       },
       output: {
-        "200": {
-          body: z.object({
-            id: z.string().uuid(),
-            username: z.string(),
-          }),
-        },
-        "400": {
-          body: z.object({
-            error: z.string(),
-          }),
-        },
-      },
-    },
-  },
-} satisfies RouteConfig;
-
-export async function GET({ params, url }) {
-  // All validations happen automatically before this handler runs
-  // params.id is guaranteed to be a valid UUID
-  // url.searchParams are validated
-  // headers are validated
-
-  // Your logic here...
-
-  return json(
-    { id: params.id, username: "john", email: "john@example.com" },
-    {
-      headers: {
-        "x-rate-limit-remaining": "99",
-      },
-    }
-  );
-}
-```
-
-### Defining Openapi manually (highly customizable)
-
-You can also define schemas for route validation and more consistent schema infrence
-
-```ts
-// src/routes/api/users/[id]/+server.ts
-import { json } from "@sveltejs/kit";
-import { z } from "zod";
-
-export const _config = {
-  openapi: {
-    GET: {
-      summary: "Get user by ID",
-      description: "Retrieves a user by their unique ID.",
-      tags: ["Users"],
-      parameters: [
-        {
-          name: "id",
-          in: "path",
-          required: true,
-          schema: { type: "string", format: "uuid" },
-          description: "The unique identifier of the user.",
-        },
-        {
-          name: "include",
-          in: "query",
-          required: false,
-          schema: { type: "string", enum: ["posts", "comments"] },
-          description: "Related data to include in the response.",
-        },
-        {
-          name: "limit",
-          in: "query",
-          required: false,
-          schema: { type: "integer", minimum: 1, maximum: 100, default: 10 },
-          description: "Maximum number of related items to return.",
-        },
-        {
-          name: "authorization",
-          in: "header",
-          required: true,
-          schema: { type: "string" },
-          description: "Bearer token for authentication.",
-        },
-      ],
-      responses: {
-        "200": {
-          description: "Successful response with user data.",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  id: { type: "string", format: "uuid" },
-                  username: { type: "string" },
-                  email: { type: "string", format: "email" },
-                },
-                required: ["id", "username", "email"],
-              },
-            },
-          },
-          headers: {
-            "x-rate-limit-remaining": {
-              description:
-                "The number of requests remaining in the current rate limit window.",
-              schema: { type: "string" },
-            },
-          },
-        },
-        "404": {
-          description: "User not found.",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  error: { type: "string" },
-                },
-                required: ["error"],
-              },
-            },
-          },
-        },
+        "200": { body: z.object({ token: z.string() }) },
       },
     },
   },
 };
-
-export async function GET({ params, url }) {
-  // Validations dont apply from openapi scheme
-
-  // Your logic here...
-
-  return json(
-    { id: params.id, username: "john", email: "john@example.com" },
-    {
-      headers: {
-        "x-rate-limit-remaining": "99",
-      },
-    }
-  );
-}
 ```
 
-### Note
+### Level 3: Manual (OpenAPI Override)
 
-All three methods above can exist in the same file as they merge together (Openapi > standard-schema > AST) to produce the final schema and validation.
-
-## Goodies
-
-### Importing the Schema
-
-You can import the generated OpenAPI schema directly in your code if needed:
-`For displaying openapi schema, it is recommended to use ScalarModule instead if possible`
+Need full control? Override specific parts of the OpenAPI spec manually.
 
 ```ts
-import openApiSchemaPaths from "sveltekit-auto-openapi/virtual/schema-paths";
-
-// Use the schema paths in your application
-console.log(openApiSchemaPaths);
+export const _config = {
+  openapi: {
+    GET: {
+      summary: "Legacy Endpoint",
+      description: "Manually documented endpoint.",
+    },
+  },
+};
 ```
 
-```ts
-import openApiSchemaValidationMap from "sveltekit-auto-openapi/virtual/schema-validation-map";
+## 📚 Documentation
 
-// Use the openApiSchemaValidationMap in your application, it contains all route validations in 1 big object
-console.log(openApiSchemaValidationMap);
-```
+Read the full documentation at **[your-docs-site.com](https://www.google.com/search?q=https://your-docs-site.com)**.
 
-The schema is generated as a virtual module during development and written to disk during build. It automatically updates when your API routes change.
+## 📄 License
 
-## Roadmap
-
-[x] Create hook for auto validating the input and output schemas if defined
-
-```
-🔮 Future Enhancements (as planned)
-The MVP is complete. Future additions can include:
-Config-based detailed error exposure per route
-Schema caching for better performance
-Custom error formatters
-Route filtering (skipRoutes, onlyRoutes)
-All changes are ready to be committed!
-```
-
-[] Make library compatible with standard-schema rather than only zod
-[] Implement json schema validation with @hyperjump/json-schema
-
-## 💻 Development
-
-- Clone this repository
-- Install dependencies using `bun install`
-- Run interactive tests using `bun dev`
-- Use `bun test` before push to ensure all tests and lint checks passing
-
-## License
-
-[MIT](./LICENSE)
-
-<!-- Badges -->
-
-[npm-version-src]: https://img.shields.io/npm/v/sveltekit-auto-openapi?style=flat-square
-[npm-version-href]: https://npmjs.com/package/sveltekit-auto-openapi
-[npm-downloads-src]: https://img.shields.io/npm/dm/sveltekit-auto-openapi?style=flat-square
-[npm-downloads-href]: https://npmjs.com/package/sveltekit-auto-openapi
-[github-actions-src]: https://img.shields.io/github/actions/workflow/status/unjs/sveltekit-auto-openapi/ci.yml?branch-main&style=flat-square
-[github-actions-href]: https://github.com/unjs/sveltekit-auto-openapi/actions?query=workflow%3Aci
-[codecov-src]: https://img.shields.io/codecov/c/gh/unjs/sveltekit-auto-openapi/main?style=flat-square
-[codecov-href]: https://codecov.io/gh/unjs/sveltekit-auto-openapi
-[bundle-src]: https://img.shields.io/bundlephobia/minzip/sveltekit-auto-openapi?style=flat-square
-[bundle-href]: https://bundlephobia.com/result?p=sveltekit-auto-openapi
+[MIT](https://www.google.com/search?q=./LICENSE)
