@@ -77,6 +77,10 @@ const scalar = ScalarModule({
 export const { GET } = scalar;
 ```
 
+### 5\. Visit docs
+
+Thats it! Visit your docs at `/api-docs/scalar`
+
 ---
 
 ## 💡 Usage Scenarios
