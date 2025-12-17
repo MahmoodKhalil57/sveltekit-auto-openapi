@@ -10,6 +10,7 @@ import {
   formatPath,
   inferFromAst,
   extractJsonSchema,
+  convertSchemaToParameters,
 } from "./helpers.ts";
 import { RouteConfig } from "../scalar-module/index.ts";
 
@@ -170,12 +171,63 @@ function extractValidationConfig(operation: any): {
 }
 
 /** Helper: Clean OpenAPI operation for documentation
- * Removes custom validation properties and flags
+ * Converts custom validation properties to OpenAPI parameters and merges them
+ * Priority: parameters > $headers > $query > $pathParams > $cookies
  */
 function cleanOpenapiForDocs(operation: any): any {
   const cleaned = JSON.parse(JSON.stringify(operation)); // Deep clone
 
-  // Remove custom validation properties
+  // Convert and merge custom validation properties into parameters array
+  const customParameters: any[] = [];
+
+  // Convert each custom property to parameters (if schema exists)
+  if (cleaned.$cookies?.schema) {
+    const schema = extractJsonSchema(cleaned.$cookies.schema);
+    const cookieParams = convertSchemaToParameters(schema, "cookie");
+    customParameters.push(...cookieParams);
+  }
+
+  if (cleaned.$pathParams?.schema) {
+    const schema = extractJsonSchema(cleaned.$pathParams.schema);
+    const pathParams = convertSchemaToParameters(schema, "path");
+    customParameters.push(...pathParams);
+  }
+
+  if (cleaned.$query?.schema) {
+    const schema = extractJsonSchema(cleaned.$query.schema);
+    const queryParams = convertSchemaToParameters(schema, "query");
+    customParameters.push(...queryParams);
+  }
+
+  if (cleaned.$headers?.schema) {
+    const schema = extractJsonSchema(cleaned.$headers.schema);
+    const headerParams = convertSchemaToParameters(schema, "header");
+    customParameters.push(...headerParams);
+  }
+
+  // Merge with existing parameters, giving priority to original parameters
+  // For arrays of parameter objects, we need to deduplicate by name+in combination
+  if (customParameters.length > 0) {
+    const existingParams = cleaned.parameters || [];
+
+    // Create a Set of existing parameter keys (name:in) for fast lookup
+    const existingKeys = new Set(
+      existingParams.map((p: any) => `${p.name}:${p.in}`)
+    );
+
+    // Add custom parameters only if they don't already exist
+    const mergedParams = [...existingParams];
+    for (const customParam of customParameters) {
+      const key = `${customParam.name}:${customParam.in}`;
+      if (!existingKeys.has(key)) {
+        mergedParams.push(customParam);
+      }
+    }
+
+    cleaned.parameters = mergedParams;
+  }
+
+  // Remove custom validation properties after conversion
   delete cleaned.$headers;
   delete cleaned.$query;
   delete cleaned.$pathParams;

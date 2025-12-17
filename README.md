@@ -321,8 +321,8 @@ Accessing SSR module: src/routes/users/+server.ts
 
 ## Roadmap for version 0
 
-[] Allow openapiOverride to have standard schema (and zod for more options)
-[] Add openapiOverride validation and remove the external standard schema
+[] Add better type support for \_config
+[] Add a helper function to get typed inputs and outputs
 [] Explore edge cases and find errors
 [] Optimize vite plugin
 [] Expand docs and create a docs website
