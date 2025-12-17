@@ -13,48 +13,115 @@ import {
   inferFromAst,
   standardSchemaToOpenApi,
 } from "./helpers.ts";
+import { RouteConfig } from "../scalar-module/index.ts";
+
+// Global flag to prevent re-entry during SSR module loading
+// This prevents infinite loops when route files import the virtual module
+let _isGenerating = false;
+
+// Debug mode controlled by environment variable
+const DEBUG = process.env.DEBUG_OPENAPI === "true";
+
+function debug(...args: any[]) {
+  if (DEBUG) {
+    console.log(...args);
+  }
+}
 
 export async function generate(server: ViteDevServer | null, rootDir: string) {
+  // Prevent re-entry from circular imports during SSR loading
+  if (_isGenerating) {
+    debug("⚠️ Skipping re-entrant generate call (circular dependency detected)");
+    return { openApiPaths: {}, validationMap: {} };
+  }
+
+  _isGenerating = true;
+  try {
+    return await _generateInternal(server, rootDir);
+  } finally {
+    _isGenerating = false;
+  }
+}
+
+// Cache AST project for better performance
+let _cachedProject: Project | null = null;
+let _cachedProjectRoot: string | null = null;
+
+function getASTProject(rootDir: string): Project {
+  // Reuse cached project if root hasn't changed
+  if (_cachedProject && _cachedProjectRoot === rootDir) {
+    return _cachedProject;
+  }
+
+  _cachedProject = new Project({
+    tsConfigFilePath: path.join(rootDir, "tsconfig.json"),
+    skipAddingFilesFromTsConfig: true,
+  });
+  _cachedProjectRoot = rootDir;
+
+  return _cachedProject;
+}
+
+async function _generateInternal(
+  server: ViteDevServer | null,
+  rootDir: string
+) {
   // A. Initialize validation map
   const validationMap: any = {};
 
   // 1. Initialize OpenAPI Skeleton
   const openApiPaths: any = {};
 
-  // 2. Initialize AST Project (for Scenario C)
-  const project = new Project({
-    tsConfigFilePath: path.join(rootDir, "tsconfig.json"),
-    skipAddingFilesFromTsConfig: true,
-  });
+  // 2. Get or reuse AST Project (for Scenario C)
+  const project = getASTProject(rootDir);
 
   // 3. Find all +server.ts files
-  const files = glob.sync("src/routes/**/+server.ts", { cwd: rootDir });
+  const files = glob.sync("src/routes/**/+server.ts", {
+    cwd: rootDir,
+    absolute: false,
+    nodir: true
+  });
 
   for (const file of files) {
-    const routePath = formatPath(file);
-    const absPath = path.join(rootDir, file);
+    try {
+      const routePath = formatPath(file);
+      const absPath = path.join(rootDir, file);
 
-    // --- NEW: Extract Path Params ---
-    const pathParams = extractPathParams(file);
+      // --- NEW: Extract Path Params ---
+      const pathParams = extractPathParams(file);
 
-    // Add file to AST project for analysis
-    const sourceFile = project.addSourceFileAtPath(absPath);
+      // Add file to AST project for analysis (or get cached if already added)
+      let sourceFile = project.getSourceFile(absPath);
+      if (!sourceFile) {
+        sourceFile = project.addSourceFileAtPath(absPath);
+      }
 
-    // Prepare path object
-    openApiPaths[routePath] = openApiPaths[routePath] || {};
+      // Prepare path object
+      openApiPaths[routePath] = openApiPaths[routePath] || {};
 
-    // Detect exported HTTP methods
-    const exportedMethods = sourceFile.getExportedDeclarations();
+      // Detect exported HTTP methods
+      const exportedMethods = sourceFile.getExportedDeclarations();
 
     // --- LOAD RUNTIME CONFIG (Scenario A & B) ---
-    let runtimeConfig: any = {};
+    let runtimeConfig: RouteConfig = {};
     if (server) {
       try {
         // Use Vite's SSR loader to execute the file and get the actual Zod objects
         // This handles aliases ($lib) and environment variables gracefully
-        const module = await server.ssrLoadModule(absPath);
-        if (module._config) {
-          runtimeConfig = module._config;
+        debug("Accessing SSR module:", file);
+        const moduleExports = await server.ssrLoadModule(absPath);
+
+        if (moduleExports._config) {
+          runtimeConfig = moduleExports._config;
+          debug(`  ✓ Found _config in ${file}`);
+          if (DEBUG) {
+            if (runtimeConfig.standardSchema) {
+              debug("    - standardSchema methods:", Object.keys(runtimeConfig.standardSchema));
+            }
+            if (runtimeConfig.openapiOverride) {
+              debug("    - openapiOverride methods:", Object.keys(runtimeConfig.openapiOverride));
+            }
+          }
         }
       } catch (e) {
         console.warn(
@@ -98,8 +165,8 @@ export async function generate(server: ViteDevServer | null, rootDir: string) {
       // --- Build Scenario B: Zod Validation (Mid Priority) ---
       const scenarioB: any = {};
 
-      if (runtimeConfig.validation?.[methodKeyUpper]) {
-        const val = runtimeConfig.validation[methodKeyUpper];
+      if (runtimeConfig.standardSchema?.[methodKeyUpper]) {
+        const val = runtimeConfig.standardSchema[methodKeyUpper];
 
         // Initialize route entry in validationMap if not exists
         if (!validationMap[routePath]) {
@@ -115,6 +182,7 @@ export async function generate(server: ViteDevServer | null, rootDir: string) {
 
         // Input Schema - handle RequestOptions structure
         if (val.input?.body) {
+          // @ts-expect-error -- ZodSchema type
           let jsonSchema = zodToJsonSchema(val.input.body, {
             target: "openApi3",
           });
@@ -133,6 +201,7 @@ export async function generate(server: ViteDevServer | null, rootDir: string) {
 
         // Handle input.query - convert to OpenAPI query parameters
         if (val.input?.query) {
+          // @ts-expect-error -- ZodSchema type
           let querySchema = zodToJsonSchema(val.input.query, {
             target: "openApi3",
           });
@@ -149,6 +218,7 @@ export async function generate(server: ViteDevServer | null, rootDir: string) {
 
         // Handle input.parameters - convert to OpenAPI path parameters
         if (val.input?.parameters) {
+          // @ts-expect-error -- ZodSchema type
           let paramsSchema = zodToJsonSchema(val.input.parameters, {
             target: "openApi3",
           });
@@ -165,6 +235,7 @@ export async function generate(server: ViteDevServer | null, rootDir: string) {
 
         // Handle input.headers - convert to OpenAPI header parameters
         if (val.input?.headers) {
+          // @ts-expect-error -- ZodSchema type
           let headersSchema = zodToJsonSchema(val.input.headers, {
             target: "openApi3",
           });
@@ -184,6 +255,7 @@ export async function generate(server: ViteDevServer | null, rootDir: string) {
 
         // Handle input.cookies - convert to OpenAPI cookie parameters
         if (val.input?.cookies) {
+          // @ts-expect-error -- ZodSchema type
           let cookiesSchema = zodToJsonSchema(val.input.cookies, {
             target: "openApi3",
           });
@@ -303,7 +375,8 @@ export async function generate(server: ViteDevServer | null, rootDir: string) {
       }
 
       // --- Build Scenario A: Manual Override (Highest Priority) ---
-      const scenarioA: any = runtimeConfig.openapi?.[methodKeyUpper] || {};
+      // @ts-expect-error -- ZodSchema type
+      const scenarioA = runtimeConfig.openapiOverride?.[methodKeyUpper] || {};
 
       // Merge all scenarios with custom merger (A > B > C > base priority)
       // Custom merger handles:
@@ -321,6 +394,31 @@ export async function generate(server: ViteDevServer | null, rootDir: string) {
 
       openApiPaths[routePath][methodKey] = operation;
     });
+    } catch (error) {
+      console.error(`[OpenAPI] Error processing route file ${file}:`, error);
+      // Continue processing other files even if one fails
+    }
+  }
+
+  // Debug: Show final generated paths
+  if (DEBUG) {
+    console.log("\n📊 Generated OpenAPI Paths:");
+    for (const [path, methods] of Object.entries(openApiPaths)) {
+      console.log(`\n  ${path}:`);
+      for (const [method, operation] of Object.entries(methods as any)) {
+        const op = operation as any;
+        console.log(`    ${method.toUpperCase()}:`);
+        console.log(`      - summary: ${op.summary || "(none)"}`);
+        console.log(`      - parameters: ${op.parameters?.length || 0}`);
+        console.log(
+          `      - responses: ${
+            Object.keys(op.responses || {}).join(", ") || "(none)"
+          }`
+        );
+        console.log(`      - requestBody: ${op.requestBody ? "yes" : "no"}`);
+      }
+    }
+    console.log("");
   }
 
   return { openApiPaths, validationMap };

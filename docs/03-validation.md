@@ -16,7 +16,7 @@ import { z } from "zod";
 import type { RouteConfig } from "sveltekit-auto-openapi/scalar-module";
 
 export const _config: RouteConfig = {
-  validation: {
+  standardSchema: {
     // Method (GET, POST, PUT, etc.)
     POST: {
       input: {

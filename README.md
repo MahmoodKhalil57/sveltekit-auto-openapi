@@ -106,7 +106,7 @@ Export a `_config` object to enforce runtime validation and detailed docs.
 import { z } from "zod";
 
 export const _config = {
-  validation: {
+  standardSchema: {
     POST: {
       input: {
         body: z.object({ email: z.string().email() }),
@@ -126,7 +126,7 @@ Need full control? Override specific parts of the OpenAPI spec manually.
 
 ```ts
 export const _config = {
-  openapi: {
+  openapiOverride: {
     GET: {
       summary: "Legacy Endpoint",
       description: "Manually documented endpoint.",
@@ -138,6 +138,39 @@ export const _config = {
 ## 📚 Documentation
 
 Read the full documentation at **[your-docs-site.com](https://www.google.com/search?q=https://your-docs-site.com)**.
+
+## 🐛 Debugging
+
+Enable detailed logging during development by setting the `DEBUG_OPENAPI` environment variable:
+
+```bash
+DEBUG_OPENAPI=true bun dev
+# or
+DEBUG_OPENAPI=true npm run dev
+```
+
+This will show:
+- Which route files are being processed
+- SSR module loading status
+- Found `_config` objects and their methods
+- Complete generated OpenAPI schema with all paths and operations
+- Virtual module invalidation events
+
+Example output:
+```
+Accessing SSR module: src/routes/users/+server.ts
+  ✓ Found _config in src/routes/users/+server.ts
+    - standardSchema methods: [ 'GET', 'POST' ]
+    - openapiOverride methods: [ 'GET' ]
+
+📊 Generated OpenAPI Paths:
+  /users:
+    GET:
+      - summary: List all users
+      - parameters: 2
+      - responses: 200, 401
+      - requestBody: no
+```
 
 ## 📄 License
 

@@ -4,16 +4,7 @@ import type { OpenAPIV3 } from "openapi-types";
 import { defu } from "defu";
 import type { ZodType } from "zod";
 import openApiSchemaPaths from "sveltekit-auto-openapi/schema-paths";
-
-/**
- * Helper type that makes all nested properties also accept null (for deletion markers)
- * Uses Record<string, any> to handle index signatures and deeply nested objects
- */
-type DeepNullable<T> = T extends object
-  ? {
-      [P in keyof T]?: DeepNullable<T[P]> | null;
-    } & Record<string, any>
-  : T | null;
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 type Digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
 type HttpStatusCodeStart = "1" | "2" | "3" | "4" | "5";
@@ -28,20 +19,20 @@ export type OpenApiResponseKey =
   | "default";
 
 export type RequestOptions = {
-  body?: ZodType;
-  query?: ZodType;
-  parameters?: ZodType;
-  headers?: ZodType;
-  cookies?: ZodType;
+  body?: StandardSchemaV1 | ZodType<any>;
+  query?: StandardSchemaV1 | ZodType<any>;
+  parameters?: StandardSchemaV1 | ZodType<any>;
+  headers?: StandardSchemaV1 | ZodType<any>;
+  cookies?: StandardSchemaV1 | ZodType<any>;
 };
 
 export type ResponseOptions = Partial<
   Record<
     OpenApiResponseKey,
     {
-      body?: ZodType;
-      headers?: ZodType;
-      cookies?: ZodType;
+      body?: StandardSchemaV1 | ZodType<any>;
+      headers?: StandardSchemaV1 | ZodType<any>;
+      cookies?: StandardSchemaV1 | ZodType<any>;
     }
   >
 >;
@@ -62,8 +53,8 @@ type PathItemObject<T extends {} = {}> = {
 };
 
 export interface RouteConfig {
-  openapi?: PathItemObject; // e.g., 'post', 'get'
-  validation?: Record<string, ValidationConfig>;
+  openapiOverride?: PathItemObject; // e.g., 'post', 'get'
+  standardSchema?: Record<string, ValidationConfig>;
 }
 
 /**
@@ -162,7 +153,7 @@ const ScalarModule = (opts?: ScalarModuleOptions) => {
   const scalarOpts = opts?.scalarOpts ?? defaults.scalarOpts;
   return {
     _config: {
-      openapi: {
+      openapiOverride: {
         GET: {
           parameters: [],
           responses: {

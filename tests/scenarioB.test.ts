@@ -13,7 +13,7 @@ const TSCONFIG_FILE = path.join(TEST_ROOT, "tsconfig.json");
 // 1. Define the Runtime Config (Scenario B)
 // This simulates what the file exports at runtime for Zod validation
 const mockRuntimeConfig = {
-  validation: {
+  standardSchema: {
     POST: {
       input: {
         body: z.object({
@@ -65,7 +65,7 @@ import { z } from 'zod';
 
 // Runtime config for the generator (Scenario B)
 export const _config = {
-  validation: {
+  standardSchema: {
     POST: {
       input: {
         body: z.object({
@@ -252,7 +252,7 @@ describe("Full Integration Test", () => {
 
     // Validate using the Zod schema directly (what the hook does)
     const zodResult =
-      mockRuntimeConfig.validation.POST.input.body.safeParse(invalidInput);
+      mockRuntimeConfig.standardSchema.POST.input.body.safeParse(invalidInput);
     expect(zodResult.success).toBe(false);
 
     // Validate that the generated OpenAPI schema ALso describes this constraint
@@ -271,13 +271,13 @@ describe("Full Integration Test", () => {
     // Test valid input
     const validInput = { username: "John", age: 25 };
     const validResult =
-      mockRuntimeConfig.validation.POST.input.body.safeParse(validInput);
+      mockRuntimeConfig.standardSchema.POST.input.body.safeParse(validInput);
     expect(validResult.success).toBe(true);
 
     // Test invalid input (username too short)
     const invalidInput1 = { username: "Jo" };
     const invalidResult1 =
-      mockRuntimeConfig.validation.POST.input.body.safeParse(invalidInput1);
+      mockRuntimeConfig.standardSchema.POST.input.body.safeParse(invalidInput1);
     expect(invalidResult1.success).toBe(false);
     if (!invalidResult1.success) {
       expect(invalidResult1.error.issues[0].path).toContain("username");
@@ -287,7 +287,7 @@ describe("Full Integration Test", () => {
     // Test invalid input (age is string instead of number)
     const invalidInput2 = { username: "John", age: "25" };
     const invalidResult2 =
-      mockRuntimeConfig.validation.POST.input.body.safeParse(invalidInput2);
+      mockRuntimeConfig.standardSchema.POST.input.body.safeParse(invalidInput2);
     expect(invalidResult2.success).toBe(false);
     if (!invalidResult2.success) {
       expect(invalidResult2.error.issues[0].path).toContain("age");
@@ -296,7 +296,7 @@ describe("Full Integration Test", () => {
     // Test optional field (age can be omitted)
     const validInput2 = { username: "Jane" };
     const validResult2 =
-      mockRuntimeConfig.validation.POST.input.body.safeParse(validInput2);
+      mockRuntimeConfig.standardSchema.POST.input.body.safeParse(validInput2);
     expect(validResult2.success).toBe(true);
   });
 
@@ -314,7 +314,7 @@ describe("Full Integration Test", () => {
       id: "550e8400-e29b-41d4-a716-446655440000",
     };
     const validResult =
-      mockRuntimeConfig.validation.POST.output["200"].body.safeParse(
+      mockRuntimeConfig.standardSchema.POST.output["200"].body.safeParse(
         validOutput
       );
     expect(validResult.success).toBe(true);
@@ -322,7 +322,7 @@ describe("Full Integration Test", () => {
     // Test invalid output (missing success field)
     const invalidOutput1 = { id: "550e8400-e29b-41d4-a716-446655440000" };
     const invalidResult1 =
-      mockRuntimeConfig.validation.POST.output["200"].body.safeParse(
+      mockRuntimeConfig.standardSchema.POST.output["200"].body.safeParse(
         invalidOutput1
       );
     expect(invalidResult1.success).toBe(false);
@@ -333,7 +333,7 @@ describe("Full Integration Test", () => {
     // Test invalid output (id is not a valid UUID)
     const invalidOutput2 = { success: true, id: "not-a-uuid" };
     const invalidResult2 =
-      mockRuntimeConfig.validation.POST.output["200"].body.safeParse(
+      mockRuntimeConfig.standardSchema.POST.output["200"].body.safeParse(
         invalidOutput2
       );
     expect(invalidResult2.success).toBe(false);
@@ -348,7 +348,7 @@ describe("Full Integration Test", () => {
       id: "550e8400-e29b-41d4-a716-446655440000",
     };
     const invalidResult3 =
-      mockRuntimeConfig.validation.POST.output["200"].body.safeParse(
+      mockRuntimeConfig.standardSchema.POST.output["200"].body.safeParse(
         invalidOutput3
       );
     expect(invalidResult3.success).toBe(false);
@@ -374,7 +374,9 @@ describe("Full Integration Test", () => {
     // Simulate request with valid input
     const validRequestBody = { username: "Alice", age: 30 };
     const inputValidation =
-      mockRuntimeConfig.validation.POST.input.body.safeParse(validRequestBody);
+      mockRuntimeConfig.standardSchema.POST.input.body.safeParse(
+        validRequestBody
+      );
     expect(inputValidation.success).toBe(true);
 
     // Simulate response with valid output
@@ -383,7 +385,7 @@ describe("Full Integration Test", () => {
       id: "123e4567-e89b-12d3-a456-426614174000",
     };
     const outputValidation =
-      mockRuntimeConfig.validation.POST.output["200"].body.safeParse(
+      mockRuntimeConfig.standardSchema.POST.output["200"].body.safeParse(
         validResponseBody
       );
     expect(outputValidation.success).toBe(true);
@@ -391,7 +393,7 @@ describe("Full Integration Test", () => {
     // Simulate request with invalid input and verify it fails
     const invalidRequestBody = { username: "Al" }; // Too short
     const invalidInputValidation =
-      mockRuntimeConfig.validation.POST.input.body.safeParse(
+      mockRuntimeConfig.standardSchema.POST.input.body.safeParse(
         invalidRequestBody
       );
     expect(invalidInputValidation.success).toBe(false);
@@ -399,7 +401,7 @@ describe("Full Integration Test", () => {
     // Simulate response with invalid output and verify it fails
     const invalidResponseBody = { success: true, id: "invalid-uuid" };
     const invalidOutputValidation =
-      mockRuntimeConfig.validation.POST.output["200"].body.safeParse(
+      mockRuntimeConfig.standardSchema.POST.output["200"].body.safeParse(
         invalidResponseBody
       );
     expect(invalidOutputValidation.success).toBe(false);
@@ -409,19 +411,19 @@ describe("Full Integration Test", () => {
     // Test valid query parameters
     const validQuery = { include: "profile" };
     const validResult =
-      mockRuntimeConfig.validation.POST.input.query.safeParse(validQuery);
+      mockRuntimeConfig.standardSchema.POST.input.query.safeParse(validQuery);
     expect(validResult.success).toBe(true);
 
     // Test optional query parameter (can be omitted)
     const emptyQuery = {};
     const emptyResult =
-      mockRuntimeConfig.validation.POST.input.query.safeParse(emptyQuery);
+      mockRuntimeConfig.standardSchema.POST.input.query.safeParse(emptyQuery);
     expect(emptyResult.success).toBe(true);
 
     // Test invalid query parameter (wrong enum value)
     const invalidQuery = { include: "invalid" };
     const invalidResult =
-      mockRuntimeConfig.validation.POST.input.query.safeParse(invalidQuery);
+      mockRuntimeConfig.standardSchema.POST.input.query.safeParse(invalidQuery);
     expect(invalidResult.success).toBe(false);
     if (!invalidResult.success) {
       expect(invalidResult.error.issues[0].path).toContain("include");
@@ -432,13 +434,15 @@ describe("Full Integration Test", () => {
     // Test valid path parameter (UUID)
     const validParams = { id: "550e8400-e29b-41d4-a716-446655440000" };
     const validResult =
-      mockRuntimeConfig.validation.POST.input.parameters.safeParse(validParams);
+      mockRuntimeConfig.standardSchema.POST.input.parameters.safeParse(
+        validParams
+      );
     expect(validResult.success).toBe(true);
 
     // Test invalid path parameter (not a UUID)
     const invalidParams = { id: "not-a-uuid" };
     const invalidResult =
-      mockRuntimeConfig.validation.POST.input.parameters.safeParse(
+      mockRuntimeConfig.standardSchema.POST.input.parameters.safeParse(
         invalidParams
       );
     expect(invalidResult.success).toBe(false);
@@ -450,7 +454,7 @@ describe("Full Integration Test", () => {
     // Test missing required parameter
     const missingParams = {};
     const missingResult =
-      mockRuntimeConfig.validation.POST.input.parameters.safeParse(
+      mockRuntimeConfig.standardSchema.POST.input.parameters.safeParse(
         missingParams
       );
     expect(missingResult.success).toBe(false);
@@ -463,7 +467,9 @@ describe("Full Integration Test", () => {
       authorization: "Bearer token123",
     };
     const validResult =
-      mockRuntimeConfig.validation.POST.input.headers.safeParse(validHeaders);
+      mockRuntimeConfig.standardSchema.POST.input.headers.safeParse(
+        validHeaders
+      );
     expect(validResult.success).toBe(true);
 
     // Test invalid authorization header (doesn't match Bearer pattern)
@@ -472,7 +478,9 @@ describe("Full Integration Test", () => {
       authorization: "InvalidToken",
     };
     const invalidResult =
-      mockRuntimeConfig.validation.POST.input.headers.safeParse(invalidHeaders);
+      mockRuntimeConfig.standardSchema.POST.input.headers.safeParse(
+        invalidHeaders
+      );
     expect(invalidResult.success).toBe(false);
     if (!invalidResult.success) {
       expect(invalidResult.error.issues[0].path).toContain("authorization");
@@ -483,7 +491,9 @@ describe("Full Integration Test", () => {
       "content-type": "application/json",
     };
     const missingResult =
-      mockRuntimeConfig.validation.POST.input.headers.safeParse(missingHeaders);
+      mockRuntimeConfig.standardSchema.POST.input.headers.safeParse(
+        missingHeaders
+      );
     expect(missingResult.success).toBe(false);
   });
 
@@ -491,13 +501,17 @@ describe("Full Integration Test", () => {
     // Test valid cookies
     const validCookies = { sessionId: "abc123" };
     const validResult =
-      mockRuntimeConfig.validation.POST.input.cookies.safeParse(validCookies);
+      mockRuntimeConfig.standardSchema.POST.input.cookies.safeParse(
+        validCookies
+      );
     expect(validResult.success).toBe(true);
 
     // Test missing required cookie
     const missingCookies = {};
     const missingResult =
-      mockRuntimeConfig.validation.POST.input.cookies.safeParse(missingCookies);
+      mockRuntimeConfig.standardSchema.POST.input.cookies.safeParse(
+        missingCookies
+      );
     expect(missingResult.success).toBe(false);
     if (!missingResult.success) {
       expect(missingResult.error.issues[0].path).toContain("sessionId");
@@ -508,7 +522,7 @@ describe("Full Integration Test", () => {
     // Test valid response headers
     const validHeaders = { "x-rate-limit": "100" };
     const validResult =
-      mockRuntimeConfig.validation.POST.output["200"].headers.safeParse(
+      mockRuntimeConfig.standardSchema.POST.output["200"].headers.safeParse(
         validHeaders
       );
     expect(validResult.success).toBe(true);
@@ -516,7 +530,7 @@ describe("Full Integration Test", () => {
     // Test missing required response header
     const missingHeaders = {};
     const missingResult =
-      mockRuntimeConfig.validation.POST.output["200"].headers.safeParse(
+      mockRuntimeConfig.standardSchema.POST.output["200"].headers.safeParse(
         missingHeaders
       );
     expect(missingResult.success).toBe(false);
@@ -529,7 +543,7 @@ describe("Full Integration Test", () => {
     // Test valid response cookies
     const validCookies = { session: "xyz789" };
     const validResult =
-      mockRuntimeConfig.validation.POST.output["200"].cookies.safeParse(
+      mockRuntimeConfig.standardSchema.POST.output["200"].cookies.safeParse(
         validCookies
       );
     expect(validResult.success).toBe(true);
@@ -537,7 +551,7 @@ describe("Full Integration Test", () => {
     // Test missing required response cookie
     const missingCookies = {};
     const missingResult =
-      mockRuntimeConfig.validation.POST.output["200"].cookies.safeParse(
+      mockRuntimeConfig.standardSchema.POST.output["200"].cookies.safeParse(
         missingCookies
       );
     expect(missingResult.success).toBe(false);
@@ -560,30 +574,32 @@ describe("Full Integration Test", () => {
     };
 
     // Validate each input type
-    const bodyResult = mockRuntimeConfig.validation.POST.input.body.safeParse(
-      allInputs.body
-    );
+    const bodyResult =
+      mockRuntimeConfig.standardSchema.POST.input.body.safeParse(
+        allInputs.body
+      );
     expect(bodyResult.success).toBe(true);
 
-    const queryResult = mockRuntimeConfig.validation.POST.input.query.safeParse(
-      allInputs.query
-    );
+    const queryResult =
+      mockRuntimeConfig.standardSchema.POST.input.query.safeParse(
+        allInputs.query
+      );
     expect(queryResult.success).toBe(true);
 
     const paramsResult =
-      mockRuntimeConfig.validation.POST.input.parameters.safeParse(
+      mockRuntimeConfig.standardSchema.POST.input.parameters.safeParse(
         allInputs.parameters
       );
     expect(paramsResult.success).toBe(true);
 
     const headersResult =
-      mockRuntimeConfig.validation.POST.input.headers.safeParse(
+      mockRuntimeConfig.standardSchema.POST.input.headers.safeParse(
         allInputs.headers
       );
     expect(headersResult.success).toBe(true);
 
     const cookiesResult =
-      mockRuntimeConfig.validation.POST.input.cookies.safeParse(
+      mockRuntimeConfig.standardSchema.POST.input.cookies.safeParse(
         allInputs.cookies
       );
     expect(cookiesResult.success).toBe(true);
@@ -598,17 +614,17 @@ describe("Full Integration Test", () => {
     };
 
     // Validate each output type for 200 response
-    const bodyResult = mockRuntimeConfig.validation.POST.output[
+    const bodyResult = mockRuntimeConfig.standardSchema.POST.output[
       "200"
     ].body.safeParse(allOutputs.body);
     expect(bodyResult.success).toBe(true);
 
-    const headersResult = mockRuntimeConfig.validation.POST.output[
+    const headersResult = mockRuntimeConfig.standardSchema.POST.output[
       "200"
     ].headers.safeParse(allOutputs.headers);
     expect(headersResult.success).toBe(true);
 
-    const cookiesResult = mockRuntimeConfig.validation.POST.output[
+    const cookiesResult = mockRuntimeConfig.standardSchema.POST.output[
       "200"
     ].cookies.safeParse(allOutputs.cookies);
     expect(cookiesResult.success).toBe(true);

@@ -30,7 +30,7 @@ The type definition for the `_config` export.
 
 ```ts
 export interface RouteConfig {
-  openapi?: PathItemObject; // Standard OpenAPI Operation object
-  validation?: Record<string, ValidationConfig>; // Zod Schemas
+  openapiOverride?: PathItemObject; // Standard OpenAPI Operation object
+  standardSchema?: Record<string, ValidationConfig>; // Zod Schemas
 }
 ```
