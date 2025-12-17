@@ -34,17 +34,6 @@ export default function svelteOpenApi(): Plugin {
     name: "sveltekit-auto-openapi",
     enforce: "pre",
 
-    config() {
-      return {
-        ssr: {
-          resolve: {
-            conditions: ["svelte"],
-            externalConditions: ["svelte"],
-          },
-        },
-      };
-    },
-
     configResolved(config) {
       root = config.root;
     },
@@ -74,7 +63,9 @@ export default function svelteOpenApi(): Plugin {
         // CRITICAL: If we're currently generating and a route file imports this virtual module
         // during SSR loading, we must return cached data or empty stub immediately to avoid deadlock
         if (isGenerating) {
-          debug("⚠️ Virtual module requested during generation - returning stub to prevent deadlock");
+          debug(
+            "⚠️ Virtual module requested during generation - returning stub to prevent deadlock"
+          );
 
           if (id === RESOLVED_VIRTUAL_SCHEMA_MODULE_ID) {
             return `export default ${JSON.stringify(
@@ -126,11 +117,15 @@ export default function svelteOpenApi(): Plugin {
                 );
                 if (validationMapModule) {
                   server.moduleGraph.invalidateModule(validationMapModule);
-                  debug("✓ Invalidated validation map module to reload with real data");
+                  debug(
+                    "✓ Invalidated validation map module to reload with real data"
+                  );
                 }
               }
             } else {
-              debug("⚠️ Generation returned empty data, keeping existing cache");
+              debug(
+                "⚠️ Generation returned empty data, keeping existing cache"
+              );
               // Initialize cache with empty objects if still null
               if (!cachedSchema) cachedSchema = {};
               if (!cachedValidationMap) cachedValidationMap = {};
@@ -286,7 +281,9 @@ export default function svelteOpenApi(): Plugin {
         const buildValidationMap: any = {};
         for (const [routePath, methods] of Object.entries(validationMap)) {
           buildValidationMap[routePath] = {};
-          for (const [method, data] of Object.entries(methods as Record<string, any>)) {
+          for (const [method, data] of Object.entries(
+            methods as Record<string, any>
+          )) {
             const { isImplemented } = data as any;
             // In build mode, validation is disabled (schemas not bundled)
             // Only include isImplemented flag to return 501 for unimplemented methods
@@ -304,9 +301,17 @@ export default function svelteOpenApi(): Plugin {
         // Ensure dist directory exists and write the file
         await fs.promises.mkdir(`${folderPath}`, { recursive: true });
         await fs.promises.writeFile(schemaPath, schemaContent, "utf-8");
-        await fs.promises.writeFile(validationMapPath, validationMapContent, "utf-8");
+        await fs.promises.writeFile(
+          validationMapPath,
+          validationMapContent,
+          "utf-8"
+        );
 
-        console.log(`✓ Generated OpenAPI schema with ${Object.keys(openApiPaths).length} route(s)`);
+        console.log(
+          `✓ Generated OpenAPI schema with ${
+            Object.keys(openApiPaths).length
+          } route(s)`
+        );
       } catch (err) {
         console.error("❌ Failed to write OpenAPI schema:", err);
         // Don't throw - allow build to continue even if OpenAPI generation fails
@@ -335,7 +340,9 @@ export default function svelteOpenApi(): Plugin {
           server.moduleGraph.invalidateModule(validationMapModule);
         }
 
-        debug("API Route changed, OpenAPI schema will regenerate on next import.");
+        debug(
+          "API Route changed, OpenAPI schema will regenerate on next import."
+        );
 
         // Return empty array to trigger full reload for the virtual module
         return [];

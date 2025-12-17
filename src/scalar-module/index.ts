@@ -261,8 +261,12 @@ const ScalarModule = (opts?: ScalarModuleOptions) => {
           const routeBasePath =
             (request.route.id?.replace("/[slug]", "") ?? "") + "/";
 
-          // Dynamic import to avoid SSR issues with @scalar/sveltekit's export conditions
-          const { ScalarApiReference } = await import("@scalar/sveltekit");
+          const { ScalarApiReference } = (await import(
+            // @ts-expect-error Import from dist path directly to avoid export condition issues at runtime
+            "@scalar/sveltekit/dist/index.js"
+          )) as {
+            ScalarApiReference: typeof import("@scalar/sveltekit").ScalarApiReference;
+          };
           const render = ScalarApiReference({
             url: routeBasePath + openApiPath,
             ...scalarOpts,
