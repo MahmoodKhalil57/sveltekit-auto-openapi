@@ -32,7 +32,7 @@ Production builds now generate complete OpenAPI schemas with full validation sup
 ## ⚡ Features
 
 - **🔎 Automatic Inference**: Generates OpenAPI schemas by analyzing your `request.json<Type>()` calls.
-- **🛡️ Runtime Validation**: Validates Headers, Cookies, Query Params, and Body using [Zod](https://zod.dev).
+- **🛡️ Runtime Validation**: Validates Headers, Cookies, Query Params, and Body using JSON Schema (supports [Zod](https://zod.dev)).
 - **📘 Interactive Documentation**: Built-in [Scalar](https://scalar.com) integration for beautiful API references.
 - **⚡ Zero Boilerplate**: Works directly with standard SvelteKit `+server.ts` files.
 - **🔄 Hot Reload**: OpenAPI schemas update instantly as you modify your routes.
@@ -79,9 +79,13 @@ Add the hook to `src/hooks.server.ts` to enable runtime validation.
 
 ```ts
 import { sequence } from "@sveltejs/kit/hooks";
-import SchemaValidationHook from "sveltekit-auto-openapi/schema-validation-hook";
+import { createSchemaValidationHook } from "sveltekit-auto-openapi/schema-validation-hook";
 
-export const handle = sequence(SchemaValidationHook());
+export const handle = sequence(
+  createSchemaValidationHook({
+    validateOutput: import.meta.env.DEV, // Enable response validation in development only
+  })
+);
 ```
 
 ### 4\. Create API Docs Route
@@ -127,27 +131,48 @@ export async function POST({ request }) {
 }
 ```
 
-### Level 2: Strict (Zod Validation)
+### Level 2: Strict (Runtime Validation)
 
-Export a `_config` object to enforce runtime validation and detailed docs.
+Export a `_config` object with validation schemas to enforce runtime validation and generate detailed docs.
 
 ```ts
 import { json } from "@sveltejs/kit";
 import z from "zod";
 
 export const _config = {
-  // Define standard schema for automatic validation and documentation
-  standardSchema: {
+  openapiOverride: {
     POST: {
-      input: {
-        body: z.object({ email: z.email() }),
-        headers: z.object({ "x-api-key": z.string() }),
+      summary: "Create user",
+      description: "Creates a new user with email",
+
+      // Validate custom properties with $ prefix
+      $headers: {
+        $showErrorMessage: true,
+        $skipValidation: false,
+        schema: z.object({ "x-api-key": z.string() }),
       },
-      output: {
+
+      // Validate request body (standard OpenAPI structure)
+      requestBody: {
+        content: {
+          "application/json": {
+            $showErrorMessage: true,
+            $skipValidation: false,
+            schema: z.object({ email: z.string().email() }),
+          },
+        },
+      },
+
+      // Validate responses (standard OpenAPI structure)
+      responses: {
         "200": {
-          body: z.object({
-            success: z.boolean(),
-          }),
+          description: "Success",
+          content: {
+            "application/json": {
+              $showErrorMessage: true,
+              schema: z.object({ success: z.boolean() }),
+            },
+          },
         },
       },
     },
@@ -155,35 +180,81 @@ export const _config = {
 };
 
 export async function POST({ request }) {
+  // Request is already validated by the hook!
   const { email }: { email: string } = await request.json();
   console.log("🚀 ~ POST ~ email:", email);
   return json({ success: true });
 }
 ```
 
-### Level 3: Manual (OpenAPI Override)
+**Validation Flags:**
 
-Need full control? Override specific parts of the OpenAPI spec manually.
+- `$showErrorMessage` - Show detailed validation errors (defaults to `true` in dev, `false` in prod)
+- `$skipValidation` - Skip validation for this schema (defaults to `false`)
+
+**Supported Validation Properties:**
+
+- `$headers` - Validate request headers
+- `$query` - Validate query parameters
+- `$pathParams` - Validate path parameters
+- `$cookies` - Validate cookies
+- `requestBody.content['application/json']` - Validate request body
+- `responses[statusCode].content['application/json']` - Validate response body
+
+### Level 3: Using Raw JSON Schema
+
+Don't want to use Zod? You can provide raw JSON Schema objects directly:
 
 ```ts
 import { json } from "@sveltejs/kit";
-import z from "zod";
 
 export const _config = {
-  // Add manual OpenAPI documentation overrides and standard schema definitions
   openapiOverride: {
     POST: {
-      summary: "Legacy Endpoint",
-      description: "Manually documented endpoint.",
+      summary: "Create user",
+      description: "Creates a new user with email validation",
+
+      requestBody: {
+        content: {
+          "application/json": {
+            $showErrorMessage: true,
+            schema: {
+              type: "object",
+              properties: {
+                email: { type: "string", format: "email" },
+                age: { type: "integer", minimum: 18 },
+              },
+              required: ["email", "age"],
+            },
+          },
+        },
+      },
+
+      responses: {
+        "200": {
+          description: "User created successfully",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean" },
+                  userId: { type: "string", format: "uuid" },
+                },
+                required: ["success", "userId"],
+              },
+            },
+          },
+        },
+      },
     },
   },
 };
 
 export async function POST({ request }) {
-  // The schema is automatically generated from the type
-  const { email }: { email: string } = await request.json();
-  console.log("🚀 ~ POST ~ email:", email);
-  return json({ success: true });
+  const { email, age } = await request.json(); // Already validated!
+  console.log("🚀 ~ POST ~ email:", email, "age:", age);
+  return json({ success: true, userId: crypto.randomUUID() });
 }
 ```
 
@@ -222,14 +293,14 @@ Update your imports to use the `virtual:` prefix. The legacy paths will be remov
 
 ### Production Builds
 
-Starting from v0.0.9, production builds fully support `_config` exports:
+Production builds fully support `_config` exports:
 
-- ✅ Zod validation schemas (`standardSchema`) are processed during build
-- ✅ Manual OpenAPI overrides (`openapiOverride`) are applied
+- ✅ Validation schemas (Zod or JSON Schema) are converted at build time
+- ✅ OpenAPI overrides with custom validation are applied
 - ✅ Complete OpenAPI schemas are generated (not just AST inference)
-- ✅ Runtime validation works in production
+- ✅ Runtime validation works in production using JSON Schema
 
-The plugin now uses native `import()` to execute route modules during the build phase, enabling access to all three documentation levels (AST, Zod, Manual) in production builds.
+The plugin converts Zod schemas to JSON Schema during the build phase, then uses `@cfworker/json-schema` for fast runtime validation.
 
 ## 🐛 Debugging
 
@@ -254,8 +325,7 @@ Example output:
 ```
 Accessing SSR module: src/routes/users/+server.ts
   ✓ Found _config in src/routes/users/+server.ts
-    - standardSchema methods: [ 'GET', 'POST' ]
-    - openapiOverride methods: [ 'GET' ]
+    - openapiOverride methods: [ 'GET', 'POST' ]
 
 📊 Generated OpenAPI Paths:
   /users:

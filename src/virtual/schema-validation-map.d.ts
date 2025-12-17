@@ -1,25 +1,30 @@
-import type { z } from "zod";
+// Validation config with flags - stores JSON Schema (converted from Zod at build time)
+export interface ValidationSchemaConfig {
+  schema: any; // JSON Schema object
+  showErrorMessage?: boolean;
+  skipValidation?: boolean;
+}
 
 // Input validation config structure
 export interface InputValidationConfig {
-  body?: z.ZodType<any>;
-  query?: z.ZodType<any>;
-  parameters?: z.ZodType<any>;
-  headers?: z.ZodType<any>;
-  cookies?: z.ZodType<any>;
+  body?: ValidationSchemaConfig;
+  query?: ValidationSchemaConfig;
+  parameters?: ValidationSchemaConfig; // Path parameters
+  headers?: ValidationSchemaConfig;
+  cookies?: ValidationSchemaConfig;
 }
 
 // Output validation config structure (keyed by status code)
 export interface OutputValidationConfig {
-  body?: z.ZodType<any>;
-  headers?: z.ZodType<any>;
-  cookies?: z.ZodType<any>;
+  body?: ValidationSchemaConfig;
+  headers?: Record<string, ValidationSchemaConfig>; // Header-specific validation
+  cookies?: ValidationSchemaConfig;
 }
 
 // Method-level validation config
 export interface MethodValidationConfig {
   input?: InputValidationConfig;
-  output?: Record<string, OutputValidationConfig>;
+  output?: Record<string, OutputValidationConfig>; // Keyed by status code
   isImplemented?: boolean; // Track if method is actually exported in +server.ts
 }
 
@@ -33,6 +38,7 @@ export type ValidationRegistry = Record<
 declare module "virtual:sveltekit-auto-openapi/schema-validation-map" {
   import type {
     ValidationRegistry,
+    ValidationSchemaConfig,
     InputValidationConfig,
     OutputValidationConfig,
     MethodValidationConfig,
@@ -43,6 +49,7 @@ declare module "virtual:sveltekit-auto-openapi/schema-validation-map" {
   export default validationRegistry;
   export type {
     ValidationRegistry,
+    ValidationSchemaConfig,
     InputValidationConfig,
     OutputValidationConfig,
     MethodValidationConfig,

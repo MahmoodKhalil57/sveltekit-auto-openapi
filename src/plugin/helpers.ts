@@ -6,6 +6,7 @@ import {
   type Node,
 } from "ts-morph";
 import { defu } from "defu";
+import { zodToJsonSchema } from "zod-to-json-schema";
 
 /** Helper: Recursively map TypeScript Types to OpenAPI Schema
  * Handles Primitives, Arrays, and Objects
@@ -175,68 +176,6 @@ function customDeepMerge(target: any, source: any): any {
   return result;
 }
 
-/** Helper: Convert individual Zod Standard Field to OpenAPI Schema
- * Handles primitives, arrays, objects, and optional types
- */
-function convertStandardField(field: any): any {
-  if (!field?.def) return {};
-
-  const def = field.def;
-  const result: any = {};
-
-  // Map Zod type to JSON Schema type
-  switch (def.type) {
-    case "string":
-      result.type = "string";
-      // Extract string constraints from field level (Zod v4)
-      if (field.minLength !== undefined && field.minLength !== null) {
-        result.minLength = field.minLength;
-      }
-      if (field.maxLength !== undefined && field.maxLength !== null) {
-        result.maxLength = field.maxLength;
-      }
-      if (field.format !== undefined && field.format !== null) {
-        result.format = field.format;
-      }
-      break;
-    case "number":
-      result.type = "number";
-      // Check for integer at field level (Zod v4)
-      if (field.isInt) {
-        result.type = "integer";
-      }
-      break;
-    case "integer":
-      result.type = "integer";
-      break;
-    case "boolean":
-      result.type = "boolean";
-      break;
-    case "array":
-      result.type = "array";
-      if (def.items) {
-        result.items = convertStandardField(def.items);
-      }
-      break;
-    case "object":
-      return standardSchemaToOpenApi(field);
-    case "optional":
-      // Handle optional fields by processing the inner type
-      if (def.innerType) {
-        return convertStandardField(def.innerType);
-      }
-      break;
-    default:
-      result.type = "object";
-  }
-
-  // Extract description from field level (Zod v4)
-  if (field.description !== undefined && field.description !== null) {
-    result.description = field.description;
-  }
-
-  return result;
-}
 
 /** Helper: Map HTTP status codes to standard descriptions
  * Defaults to "Success" if unknown
@@ -256,42 +195,27 @@ export function getStatusDescription(statusCode: string): string {
   return descriptions[statusCode] || "Success";
 }
 
-/** Helper: Convert Zod Standard Schema to OpenAPI JSON Schema
- * Fallback for when zodToJsonSchema fails (Zod v4 compatibility issue)
+/** Helper: Check if an input is a Zod schema
+ * Detects Zod schemas by checking for _def property and parse method
  */
-export function standardSchemaToOpenApi(schema: any): any {
-  // If it has the ~standard property, it's a Zod v4 standard schema
-  if (schema?.["~standard"]?.vendor === "zod" && schema.def) {
-    const def = schema.def;
+export function isZodSchema(input: any): boolean {
+  return input?._def && typeof input.parse === 'function';
+}
 
-    // Handle object type
-    if (def.type === "object" && def.shape) {
-      const properties: Record<string, any> = {};
-      const required: string[] = [];
-
-      for (const [key, value] of Object.entries(def.shape)) {
-        const fieldSchema: any = value;
-        properties[key] = convertStandardField(fieldSchema);
-
-        // Check if field is required (has no optional flag)
-        if (!fieldSchema.def?.isOptional) {
-          required.push(key);
-        }
-      }
-
-      return {
-        type: "object",
-        properties,
-        required: required.length > 0 ? required : undefined,
-        additionalProperties: false,
-      };
-    }
-
-    // Handle other types
-    return convertStandardField(schema);
+/** Helper: Extract JSON Schema from input
+ * Supports both raw JSON Schema objects and Zod schemas (auto-converts Zod to JSON Schema)
+ * @param input - Either a JSON Schema object or a Zod schema
+ * @returns JSON Schema object
+ */
+export function extractJsonSchema(input: any): any {
+  // Check if it's a Zod schema
+  if (isZodSchema(input)) {
+    // Convert Zod schema to JSON Schema using zodToJsonSchema
+    return zodToJsonSchema(input, { target: 'openApi3' });
   }
 
-  return {}; // Fallback
+  // Otherwise assume it's already JSON Schema
+  return input;
 }
 
 /** Helper: Format SvelteKit route file path to OpenAPI path

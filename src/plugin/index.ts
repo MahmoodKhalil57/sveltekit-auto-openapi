@@ -190,112 +190,20 @@ export default function svelteOpenApi() {
 
         if (id === RESOLVED_VALIDATION_MAP_ID) {
           try {
-            // In dev mode, skip ssrLoadModule to avoid circular dependencies
-            // Just get the structure without loading actual modules
+            // New approach: Directly embed validation configs (no lazy-loading needed)
+            // Validation configs now contain JSON Schemas (converted from Zod at build time)
 
-            // Track unique module paths
-            const modulePaths = new Set<string>();
-            const modulePathMap: Record<string, string> = {};
-            let count = 0;
-
-            // First pass: collect all unique module paths
-            for (const methods of Object.values(cachedValidationMap || {})) {
-              for (const data of Object.values(
-                methods as Record<string, any>
-              )) {
-                const { modulePath } = data as any;
-                if (!modulePaths.has(modulePath)) {
-                  const varName = `mod_${count++}`;
-                  modulePathMap[modulePath] = varName;
-                  modulePaths.add(modulePath);
-                }
-              }
-            }
-
-            // Generate lazy-loading imports
-            const lazyImports = Array.from(modulePaths)
-              .map((modulePath) => {
-                const varName = modulePathMap[modulePath];
-                return `let ${varName} = null;`;
-              })
-              .join("\n");
-
-            const lazyLoaders = Array.from(modulePaths)
-              .map((modulePath) => {
-                const varName = modulePathMap[modulePath];
-                return `
-  async function load_${varName}() {
-    if (!${varName}) {
-      ${varName} = await import('/${modulePath}');
-    }
-    return ${varName};
-  }`;
-              })
-              .join("\n");
-
-            // Build the registry structure
-            const registryEntries: string[] = [];
-
-            for (const [routePath, methods] of Object.entries(
-              cachedValidationMap || {}
-            )) {
-              const methodEntries: string[] = [];
-
-              for (const [method, data] of Object.entries(
-                methods as Record<string, any>
-              )) {
-                const { modulePath, isImplemented } = data as any;
-                const varName = modulePathMap[modulePath];
-
-                methodEntries.push(
-                  `    get ${method}() {
-        const mod = ${varName};
-        const validation = mod?._config?.standardSchema?.["${method}"];
-        return validation ? { ...validation, isImplemented: ${isImplemented} } : undefined;
-      }`
-                );
-              }
-
-              registryEntries.push(
-                `  "${routePath}": {\n${methodEntries.join(",\n")}\n  }`
-              );
-            }
-
-            // Generate initialization function
-            const initCalls = Array.from(modulePaths)
-              .map((modulePath) => {
-                const varName = modulePathMap[modulePath];
-                return `  await load_${varName}();`;
-              })
-              .join("\n");
-
-            // Generate the complete module code
+            // Generate the complete module code with embedded validation registry
             return `
-  ${lazyImports}
-  
-  ${lazyLoaders}
-  
-  // Initialize all modules
-  let initialized = false;
-  async function initializeRegistry() {
-    if (initialized) return;
-  ${initCalls}
-    initialized = true;
-  }
-  
-  const validationRegistry = {
-  ${registryEntries.join(",\n")}
-  };
-  
-  // Auto-initialize on first import
-  const initPromise = initializeRegistry();
-  
-  export default validationRegistry;
-  export { initPromise };
-  `;
+// Auto-generated validation registry with embedded JSON Schemas
+const validationRegistry = ${JSON.stringify(cachedValidationMap || {}, null, 2)};
+
+export default validationRegistry;
+export const initPromise = Promise.resolve();
+`;
           } catch (err) {
             console.error("Failed to generate validation map:", err);
-            return `export default {};`;
+            return `export default {}; export const initPromise = Promise.resolve();`;
           }
         }
       }

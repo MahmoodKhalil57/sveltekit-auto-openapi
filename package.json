@@ -32,9 +32,16 @@
     "@types/bun": "latest"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^5",
+    "zod": "^3"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
   },
   "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
     "@scalar/core": "^0.3.26",
     "defu": "^6.1.4",
     "glob": "^13.0.0",

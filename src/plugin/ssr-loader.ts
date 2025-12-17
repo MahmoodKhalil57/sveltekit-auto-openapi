@@ -11,7 +11,6 @@ function debug(...args: any[]) {
 }
 
 export interface RouteConfig {
-  standardSchema?: Record<string, any>;
   openapiOverride?: Record<string, any>;
 }
 

@@ -1,18 +1,15 @@
 import { Project } from "ts-morph";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import type { ViteDevServer } from "vite";
 import * as path from "path";
 import { glob } from "glob";
 import { loadModuleConfig } from "./ssr-loader.ts";
 import {
-  convertSchemaToParameters,
   createCustomMerger,
   deduplicateArraysInOperation,
   extractPathParams,
   formatPath,
-  getStatusDescription,
   inferFromAst,
-  standardSchemaToOpenApi,
+  extractJsonSchema,
 } from "./helpers.ts";
 import { RouteConfig } from "../scalar-module/index.ts";
 
@@ -47,6 +44,175 @@ export async function generate(server: ViteDevServer | null, rootDir: string) {
 // Cache AST project for better performance
 let _cachedProject: Project | null = null;
 let _cachedProjectRoot: string | null = null;
+
+// Type definitions for internal use
+type ValidationSchemaConfig = {
+  schema: any;
+  showErrorMessage?: boolean;
+  skipValidation?: boolean;
+};
+
+type InputValidationConfig = {
+  body?: ValidationSchemaConfig;
+  query?: ValidationSchemaConfig;
+  parameters?: ValidationSchemaConfig;
+  headers?: ValidationSchemaConfig;
+  cookies?: ValidationSchemaConfig;
+};
+
+type OutputValidationConfig = {
+  body?: ValidationSchemaConfig;
+  headers?: Record<string, ValidationSchemaConfig>;
+  cookies?: ValidationSchemaConfig;
+};
+
+/** Helper: Extract validation configs from openapiOverride operation
+ * Extracts custom $headers, $query, $pathParams, $cookies properties
+ * and validation flags from requestBody and responses
+ */
+function extractValidationConfig(operation: any): {
+  input?: InputValidationConfig;
+  output?: Record<string, OutputValidationConfig>;
+} {
+  const input: InputValidationConfig = {};
+  const output: Record<string, OutputValidationConfig> = {};
+
+  // Extract input validation from custom properties
+  if (operation.$headers) {
+    input.headers = {
+      schema: extractJsonSchema(operation.$headers.schema),
+      showErrorMessage: operation.$headers.$showErrorMessage,
+      skipValidation: operation.$headers.$skipValidation,
+    };
+  }
+
+  if (operation.$query) {
+    input.query = {
+      schema: extractJsonSchema(operation.$query.schema),
+      showErrorMessage: operation.$query.$showErrorMessage,
+      skipValidation: operation.$query.$skipValidation,
+    };
+  }
+
+  if (operation.$pathParams) {
+    input.parameters = {
+      schema: extractJsonSchema(operation.$pathParams.schema),
+      showErrorMessage: operation.$pathParams.$showErrorMessage,
+      skipValidation: operation.$pathParams.$skipValidation,
+    };
+  }
+
+  if (operation.$cookies) {
+    input.cookies = {
+      schema: extractJsonSchema(operation.$cookies.schema),
+      showErrorMessage: operation.$cookies.$showErrorMessage,
+      skipValidation: operation.$cookies.$skipValidation,
+    };
+  }
+
+  // Extract body validation from requestBody
+  if (operation.requestBody?.content) {
+    for (const [contentType, mediaType] of Object.entries(operation.requestBody.content)) {
+      if (contentType === 'application/json' && (mediaType as any).schema) {
+        input.body = {
+          schema: extractJsonSchema((mediaType as any).schema),
+          showErrorMessage: (mediaType as any).$showErrorMessage,
+          skipValidation: (mediaType as any).$skipValidation,
+        };
+        break; // Only process first JSON content type
+      }
+    }
+  }
+
+  // Extract output validation from responses
+  if (operation.responses) {
+    for (const [statusCode, response] of Object.entries(operation.responses)) {
+      const resp = response as any;
+      output[statusCode] = {};
+
+      // Extract response body validation
+      if (resp.content?.['application/json']) {
+        const jsonContent = resp.content['application/json'];
+        if (jsonContent.schema) {
+          output[statusCode].body = {
+            schema: extractJsonSchema(jsonContent.schema),
+            showErrorMessage: jsonContent.$showErrorMessage,
+            skipValidation: jsonContent.$skipValidation,
+          };
+        }
+      }
+
+      // Extract response headers validation
+      if (resp.headers) {
+        output[statusCode].headers = {};
+        for (const [headerName, headerObj] of Object.entries(resp.headers)) {
+          const header = headerObj as any;
+          if (header.schema) {
+            output[statusCode].headers![headerName] = {
+              schema: extractJsonSchema(header.schema),
+              showErrorMessage: header.$showErrorMessage,
+              skipValidation: header.$skipValidation,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    input: Object.keys(input).length > 0 ? input : undefined,
+    output: Object.keys(output).length > 0 ? output : undefined,
+  };
+}
+
+/** Helper: Clean OpenAPI operation for documentation
+ * Removes custom validation properties and flags
+ */
+function cleanOpenapiForDocs(operation: any): any {
+  const cleaned = JSON.parse(JSON.stringify(operation)); // Deep clone
+
+  // Remove custom validation properties
+  delete cleaned.$headers;
+  delete cleaned.$query;
+  delete cleaned.$pathParams;
+  delete cleaned.$cookies;
+
+  // Clean requestBody
+  if (cleaned.requestBody?.content) {
+    for (const contentType in cleaned.requestBody.content) {
+      const mediaType = cleaned.requestBody.content[contentType];
+      delete mediaType.$showErrorMessage;
+      delete mediaType.$skipValidation;
+    }
+  }
+
+  // Clean responses
+  if (cleaned.responses) {
+    for (const statusCode in cleaned.responses) {
+      const response = cleaned.responses[statusCode];
+
+      // Clean response content
+      if (response.content) {
+        for (const contentType in response.content) {
+          const mediaType = response.content[contentType];
+          delete mediaType.$showErrorMessage;
+          delete mediaType.$skipValidation;
+        }
+      }
+
+      // Clean response headers
+      if (response.headers) {
+        for (const headerName in response.headers) {
+          const header = response.headers[headerName];
+          delete header.$showErrorMessage;
+          delete header.$skipValidation;
+        }
+      }
+    }
+  }
+
+  return cleaned;
+}
 
 function getASTProject(rootDir: string): Project {
   // Reuse cached project if root hasn't changed
@@ -113,9 +279,6 @@ async function _generateInternal(
       debug(`  ✓ Found _config in ${file}`);
 
       if (DEBUG) {
-        if (runtimeConfig.standardSchema) {
-          debug("    - standardSchema methods:", Object.keys(runtimeConfig.standardSchema));
-        }
         if (runtimeConfig.openapiOverride) {
           debug("    - openapiOverride methods:", Object.keys(runtimeConfig.openapiOverride));
         }
@@ -132,12 +295,9 @@ async function _generateInternal(
       // Check if method is actually implemented (exported)
       const isImplemented = exportedMethods.has(method);
 
-      // Check if method has config defined (standardSchema or openapiOverride)
-      const hasConfig = !!(
-        runtimeConfig.standardSchema?.[methodKeyUpper] ||
-        // @ts-expect-error -- Dynamic method key access on PathItemObject mapped type
-        runtimeConfig.openapiOverride?.[methodKeyUpper]
-      );
+      // Check if method has config defined (openapiOverride)
+      // @ts-expect-error -- Dynamic method key access on PathItemObject mapped type
+      const hasConfig = !!runtimeConfig.openapiOverride?.[methodKeyUpper];
 
       // Skip if method is not implemented AND has no config
       if (!isImplemented && !hasConfig) return;
@@ -148,9 +308,8 @@ async function _generateInternal(
         parameters: pathParams.length > 0 ? [...pathParams] : [],
       };
 
-      // Priority order: A > B > C (Manual Override > Zod Validation > AST Inference)
+      // Priority order: A > C (Manual Override > AST Inference)
       // Note: Runtime configs use uppercase keys (GET, POST), OpenAPI paths use lowercase
-      // Using defu for proper deep merging with fallback
 
       // --- Build Scenario C: TypeScript AST Inference (Lowest Priority - Fallback) ---
       const scenarioC: any = {};
@@ -166,230 +325,42 @@ async function _generateInternal(
         scenarioC.responses = inferred.responses;
       }
 
-      // --- Build Scenario B: Zod Validation (Mid Priority) ---
-      const scenarioB: any = {};
+      // --- Process openapiOverride: Extract Validation & Clean for Docs ---
+      let scenarioA: any = {};
 
-      if (runtimeConfig.standardSchema?.[methodKeyUpper]) {
-        const val = runtimeConfig.standardSchema[methodKeyUpper];
+      // @ts-expect-error -- Dynamic method key access on PathItemObject mapped type
+      const openapiConfig = runtimeConfig.openapiOverride?.[methodKeyUpper];
+
+      if (openapiConfig) {
+        // Extract validation configuration from openapiOverride
+        const validationConfig = extractValidationConfig(openapiConfig);
 
         // Initialize route entry in validationMap if not exists
         if (!validationMap[routePath]) {
           validationMap[routePath] = {};
         }
 
-        // Store validation metadata and module path
+        // Store validation config in validationMap
         validationMap[routePath][methodKeyUpper] = {
-          modulePath: file, // Relative path from project root
-          hasInput: !!val.input,
-          hasOutput: !!val.output,
-          isImplemented, // Track if method is actually exported
+          modulePath: file,
+          hasInput: !!validationConfig.input,
+          hasOutput: !!validationConfig.output,
+          isImplemented,
+          input: validationConfig.input,
+          output: validationConfig.output,
         };
 
-        // Input Schema - handle RequestOptions structure
-        if (val.input?.body) {
-          // @ts-expect-error -- ZodSchema type
-          let jsonSchema = zodToJsonSchema(val.input.body, {
-            target: "openApi3",
-          });
-
-          // Fallback for Zod v4 standard schemas (zodToJsonSchema compatibility issue)
-          if (Object.keys(jsonSchema).length === 0) {
-            jsonSchema = standardSchemaToOpenApi(val.input.body);
-          }
-
-          scenarioB.requestBody = {
-            content: {
-              "application/json": { schema: jsonSchema },
-            },
-          };
-        }
-
-        // Handle input.query - convert to OpenAPI query parameters
-        if (val.input?.query) {
-          // @ts-expect-error -- ZodSchema type
-          let querySchema = zodToJsonSchema(val.input.query, {
-            target: "openApi3",
-          });
-
-          // Fallback for Zod v4 standard schemas
-          if (Object.keys(querySchema).length === 0) {
-            querySchema = standardSchemaToOpenApi(val.input.query);
-          }
-
-          const queryParams = convertSchemaToParameters(querySchema, "query");
-          if (!scenarioB.parameters) scenarioB.parameters = [];
-          scenarioB.parameters.push(...queryParams);
-        }
-
-        // Handle input.parameters - convert to OpenAPI path parameters
-        if (val.input?.parameters) {
-          // @ts-expect-error -- ZodSchema type
-          let paramsSchema = zodToJsonSchema(val.input.parameters, {
-            target: "openApi3",
-          });
-
-          // Fallback for Zod v4 standard schemas
-          if (Object.keys(paramsSchema).length === 0) {
-            paramsSchema = standardSchemaToOpenApi(val.input.parameters);
-          }
-
-          const pathParams = convertSchemaToParameters(paramsSchema, "path");
-          if (!scenarioB.parameters) scenarioB.parameters = [];
-          scenarioB.parameters.push(...pathParams);
-        }
-
-        // Handle input.headers - convert to OpenAPI header parameters
-        if (val.input?.headers) {
-          // @ts-expect-error -- ZodSchema type
-          let headersSchema = zodToJsonSchema(val.input.headers, {
-            target: "openApi3",
-          });
-
-          // Fallback for Zod v4 standard schemas
-          if (Object.keys(headersSchema).length === 0) {
-            headersSchema = standardSchemaToOpenApi(val.input.headers);
-          }
-
-          const headerParams = convertSchemaToParameters(
-            headersSchema,
-            "header"
-          );
-          if (!scenarioB.parameters) scenarioB.parameters = [];
-          scenarioB.parameters.push(...headerParams);
-        }
-
-        // Handle input.cookies - convert to OpenAPI cookie parameters
-        if (val.input?.cookies) {
-          // @ts-expect-error -- ZodSchema type
-          let cookiesSchema = zodToJsonSchema(val.input.cookies, {
-            target: "openApi3",
-          });
-
-          // Fallback for Zod v4 standard schemas
-          if (Object.keys(cookiesSchema).length === 0) {
-            cookiesSchema = standardSchemaToOpenApi(val.input.cookies);
-          }
-
-          const cookieParams = convertSchemaToParameters(
-            cookiesSchema,
-            "cookie"
-          );
-          if (!scenarioB.parameters) scenarioB.parameters = [];
-          scenarioB.parameters.push(...cookieParams);
-        }
-
-        // Output Schema - handle ResponseOptions structure with status codes
-        if (val.output) {
-          scenarioB.responses = {};
-
-          // Iterate through each status code in the output config
-          for (const [statusCode, responseConfig] of Object.entries(
-            val.output
-          )) {
-            // Type guard to ensure responseConfig has the expected shape
-            if (responseConfig && typeof responseConfig === "object") {
-              const response: any = {
-                description: getStatusDescription(statusCode),
-              };
-
-              // Handle response body
-              if ("body" in responseConfig && responseConfig.body) {
-                let jsonSchema = zodToJsonSchema(responseConfig.body as any, {
-                  target: "openApi3",
-                });
-
-                // Fallback for Zod v4 standard schemas
-                if (Object.keys(jsonSchema).length === 0) {
-                  jsonSchema = standardSchemaToOpenApi(
-                    responseConfig.body as any
-                  );
-                }
-
-                response.content = {
-                  "application/json": { schema: jsonSchema },
-                };
-              }
-
-              // Handle response headers
-              if ("headers" in responseConfig && responseConfig.headers) {
-                let headersSchema = zodToJsonSchema(
-                  responseConfig.headers as any,
-                  {
-                    target: "openApi3",
-                  }
-                ) as any;
-
-                // Fallback for Zod v4 standard schemas
-                if (Object.keys(headersSchema).length === 0) {
-                  headersSchema = standardSchemaToOpenApi(
-                    responseConfig.headers as any
-                  );
-                }
-
-                // Convert to OpenAPI headers format
-                if (
-                  headersSchema.type === "object" &&
-                  headersSchema.properties
-                ) {
-                  response.headers = {};
-                  for (const [headerName, headerSchema] of Object.entries(
-                    headersSchema.properties
-                  )) {
-                    response.headers[headerName] = {
-                      schema: headerSchema,
-                      description: (headerSchema as any).description,
-                    };
-                  }
-                }
-              }
-
-              // Note: OpenAPI doesn't have a standard way to document cookies in responses
-              // Cookies are typically set via Set-Cookie header
-              // We could add them to headers if needed
-              if ("cookies" in responseConfig && responseConfig.cookies) {
-                // Add Set-Cookie to headers
-                if (!response.headers) response.headers = {};
-                response.headers["Set-Cookie"] = {
-                  schema: { type: "string" },
-                  description: "Cookies set by this response",
-                };
-              }
-
-              scenarioB.responses[statusCode] = response;
-            }
-          }
-
-          // If no responses were added but output config exists, use inferred or default
-          if (Object.keys(scenarioB.responses).length === 0) {
-            const statusCodes =
-              inferred.responses && Object.keys(inferred.responses).length > 0
-                ? Object.keys(inferred.responses)
-                : ["200"];
-
-            // Use a generic object schema as fallback
-            for (const statusCode of statusCodes) {
-              scenarioB.responses[statusCode] = {
-                description: getStatusDescription(statusCode),
-                content: {
-                  "application/json": { schema: { type: "object" } },
-                },
-              };
-            }
-          }
-        }
+        // Clean the operation for OpenAPI docs (remove validation flags and custom properties)
+        scenarioA = cleanOpenapiForDocs(openapiConfig);
       }
 
-      // --- Build Scenario A: Manual Override (Highest Priority) ---
-      // @ts-expect-error -- Dynamic method key access on PathItemObject mapped type
-      const scenarioA = runtimeConfig.openapiOverride?.[methodKeyUpper] || {};
-
-      // Merge all scenarios with custom merger (A > B > C > base priority)
+      // Merge scenarios with custom merger (A > C > base priority, no more scenarioB)
       // Custom merger handles:
       // - Array replacement (not merging)
       // - Null value deletion
       let operation = createCustomMerger(
         scenarioA,
-        scenarioB,
+        {},  // No scenarioB anymore
         scenarioC,
         baseOperation
       );

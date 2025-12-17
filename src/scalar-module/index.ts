@@ -1,9 +1,7 @@
 import { error, json, type RequestHandler } from "@sveltejs/kit";
 import type { OpenAPIV3 } from "openapi-types";
 import { defu } from "defu";
-import type { ZodType } from "zod";
 import openApiSchemaPaths from "virtual:sveltekit-auto-openapi/schema-paths";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { ScalarApiReference } from "./scalar-api-reference.ts";
 
 type Digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
@@ -18,43 +16,54 @@ export type OpenApiResponseKey =
   | WildcardStatusCode
   | "default";
 
-export type RequestOptions = {
-  body?: StandardSchemaV1 | ZodType<any>;
-  query?: StandardSchemaV1 | ZodType<any>;
-  parameters?: StandardSchemaV1 | ZodType<any>;
-  headers?: StandardSchemaV1 | ZodType<any>;
-  cookies?: StandardSchemaV1 | ZodType<any>;
-};
-
-export type ResponseOptions = Partial<
-  Record<
-    OpenApiResponseKey,
-    {
-      body?: StandardSchemaV1 | ZodType<any>;
-      headers?: StandardSchemaV1 | ZodType<any>;
-      cookies?: StandardSchemaV1 | ZodType<any>;
-    }
-  >
->;
-
-export interface ValidationConfig {
-  input?: RequestOptions;
-  output?: ResponseOptions;
+// Custom validation configuration for the new consolidated approach
+export interface ValidationSchemaConfig {
+  $showErrorMessage?: boolean;
+  $skipValidation?: boolean;
+  schema: any; // JSON Schema or ZodType - will be converted at build time
 }
 
-type PathItemObject<T extends {} = {}> = {
+// Extend OpenAPI MediaTypeObject to include validation flags
+export type MediaTypeWithValidation = OpenAPIV3.MediaTypeObject & {
+  $showErrorMessage?: boolean;
+  $skipValidation?: boolean;
+};
+
+// Extend OpenAPI HeaderObject to include validation config
+export type HeaderWithValidation = OpenAPIV3.HeaderObject & ValidationSchemaConfig;
+
+// Extend OpenAPI ResponseObject to support validation in content and headers
+export type ResponseObjectWithValidation = Omit<OpenAPIV3.ResponseObject, 'content' | 'headers'> & {
+  content?: Record<string, MediaTypeWithValidation>;
+  headers?: Record<string, HeaderWithValidation>;
+};
+
+// Extend OpenAPI OperationObject to include custom validation properties
+export type OperationObjectWithValidation = OpenAPIV3.OperationObject & {
+  // Custom operation-level validation properties
+  $headers?: ValidationSchemaConfig;
+  $query?: ValidationSchemaConfig;
+  $pathParams?: ValidationSchemaConfig;
+  $cookies?: ValidationSchemaConfig;
+
+  // Override responses to support validation
+  responses?: Record<string, ResponseObjectWithValidation>;
+};
+
+// Updated PathItemObject to use OperationObjectWithValidation
+type PathItemObject = {
   $ref?: string;
   summary?: string;
   description?: string;
   servers?: OpenAPIV3.ServerObject[];
   parameters?: (OpenAPIV3.ReferenceObject | OpenAPIV3.ParameterObject)[];
 } & {
-  [method in Uppercase<OpenAPIV3.HttpMethods>]?: OpenAPIV3.OperationObject<T>;
+  [method in Uppercase<OpenAPIV3.HttpMethods>]?: OperationObjectWithValidation;
 };
 
+// Simplified RouteConfig - only openapiOverride now
 export interface RouteConfig {
-  openapiOverride?: PathItemObject; // e.g., 'post', 'get'
-  standardSchema?: Record<string, ValidationConfig>;
+  openapiOverride?: PathItemObject;
 }
 
 /**
