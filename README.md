@@ -47,12 +47,13 @@ npm install @scalar/sveltekit
 Add the plugin to `vite.config.ts` to enable schema generation.
 
 ```ts
-import { sveltekit } from "@sveltejs/kit/vite";
-import svelteOpenApi from "sveltekit-auto-openapi/plugin";
+import { sveltekit } from '@sveltejs/kit/vite';
+import { defineConfig } from 'vite';
+import svelteOpenApi from 'sveltekit-auto-openapi/plugin';
 
-export default {
-  plugins: [sveltekit(), svelteOpenApi()],
-};
+export default defineConfig({
+	plugins: [sveltekit(), svelteOpenApi()]
+});
 ```
 
 ### 3\. Add Validation Hook
@@ -73,12 +74,13 @@ Expose your documentation at `src/routes/api-docs/[slug]/+server.ts`.
 > **Note:** This requires installing `@scalar/sveltekit` (see step 1).
 
 ```ts
-import ScalarModule from "sveltekit-auto-openapi/scalar-module";
+import ScalarModule from 'sveltekit-auto-openapi/scalar-module';
 
 const scalar = ScalarModule({
-  openApiOpts: {
-    info: { title: "My App API", version: "1.0.0" },
-  },
+	openApiOpts: {
+		openapi: '3.0.0',
+		info: { title: 'My App API', version: '1.0.0' }
+	}
 });
 
 export const { GET } = scalar;
