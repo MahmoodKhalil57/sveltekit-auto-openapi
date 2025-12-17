@@ -222,6 +222,8 @@ Accessing SSR module: src/routes/users/+server.ts
 [] Add openapi validation and remove the external standard schema
 [] Explore edge cases and find errors
 [] Optimize vite plugin
+[] Expand docs and create a docs website
+[] Publish V1
 
 ## 📄 License
 
