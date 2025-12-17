@@ -315,7 +315,7 @@ async function _generateInternal(
           parameters: pathParams.length > 0 ? [...pathParams] : [],
         };
 
-        // Priority order: A > C (Manual Override > AST Inference)
+        // Priority order: openapiOverride > openapiAST (Manual Override > AST Inference)
         // Note: Runtime configs use uppercase keys (GET, POST), OpenAPI paths use lowercase
 
         // --- Build Scenario C: TypeScript AST Inference (Lowest Priority - Fallback) ---
@@ -361,7 +361,7 @@ async function _generateInternal(
           openapiOverrideSchema = cleanOpenapiForDocs(openapiConfig);
         }
 
-        // Merge scenarios with custom merger (A > C > base priority, no more scenarioB)
+        // Merge scenarios with custom merger (openapiOverride > openapiAST > base priority)
         // Custom merger handles:
         // - Array replacement (not merging)
         // - Null value deletion
