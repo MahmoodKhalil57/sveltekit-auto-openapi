@@ -279,7 +279,7 @@ export default function svelteOpenApi(): Plugin {
     async closeBundle() {
       try {
         console.log("🔨 Building OpenAPI schema and validation map...");
-        const { openApiPaths, validationMap } = await generate(null, root);
+        const { openApiPaths, validationMap } = await generate(server, root);
 
         // Write schema to dist directory for static import
         const folderPath = `${root}/dist`;

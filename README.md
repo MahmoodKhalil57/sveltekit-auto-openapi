@@ -217,7 +217,6 @@ Accessing SSR module: src/routes/users/+server.ts
 
 ## Roadmap for version 0
 
-[] Make sure \_config gets detected after build
 [] Allow openapi to have standard schema (and zod for more options)
 [] Add openapi validation and remove the external standard schema
 [] Explore edge cases and find errors
