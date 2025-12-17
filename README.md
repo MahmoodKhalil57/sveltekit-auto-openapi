@@ -11,8 +11,7 @@
   Write standard SvelteKit code, get documented APIs for free.
 </p>
 
-> [!WARNING]
-> **🚧 v0 - Experimental**
+> [!WARNING] > **🚧 v0 - Experimental**
 >
 > This plugin is in early development (v0) and **not recommended for production use**. APIs will most probably change, and there may be undiscovered bugs. Use at your own risk.
 >
@@ -21,6 +20,7 @@
 ## 🆕 Recent Updates (v0.0.9)
 
 ### Production Build Support
+
 - ✅ **Fixed**: `_config` exports (Zod schemas and OpenAPI overrides) are now correctly detected in production builds
 - ✅ **Fixed**: Virtual module imports now follow Vite best practices with `virtual:` prefix
 - ✅ **Backwards Compatible**: Legacy import paths still work with deprecation warnings
@@ -212,6 +212,7 @@ import validationRegistry from "sveltekit-auto-openapi/schema-validation-map";
 ### Deprecation Warnings
 
 If you see deprecation warnings like:
+
 ```
 [sveltekit-auto-openapi] Deprecation warning: Import path 'sveltekit-auto-openapi/schema-paths' is deprecated.
 Please use 'virtual:sveltekit-auto-openapi/schema-paths' instead.
@@ -267,8 +268,8 @@ Accessing SSR module: src/routes/users/+server.ts
 
 ## Roadmap for version 0
 
-[] Allow openapi to have standard schema (and zod for more options)
-[] Add openapi validation and remove the external standard schema
+[] Allow openapiOverride to have standard schema (and zod for more options)
+[] Add openapiOverride validation and remove the external standard schema
 [] Explore edge cases and find errors
 [] Optimize vite plugin
 [] Expand docs and create a docs website
