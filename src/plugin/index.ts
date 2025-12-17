@@ -1,5 +1,4 @@
 import type { Plugin, ViteDevServer } from "vite";
-import * as fs from "fs";
 import { generate } from "./generator.ts";
 
 // Debug mode controlled by environment variable
@@ -275,60 +274,26 @@ export default function svelteOpenApi(): Plugin {
       }
     },
 
-    // Run on build
+    // Production build hook - for logging/cleanup only
+    // Virtual modules are automatically bundled by Vite/Rollup via resolveId + load hooks
     async closeBundle() {
-      try {
-        console.log("🔨 Building OpenAPI schema and validation map...");
-        const { openApiPaths, validationMap } = await generate(server, root);
-
-        // Write schema to dist directory for static import
-        const folderPath = `${root}/dist`;
-        const schemaPath = `${folderPath}/schema-paths.js`;
-        const schemaContent = `export default ${JSON.stringify(
-          openApiPaths,
-          null,
-          2
-        )};`;
-
-        // Build validation map with metadata (excluding modulePath since we can't dynamically import in build)
-        const buildValidationMap: any = {};
-        for (const [routePath, methods] of Object.entries(validationMap)) {
-          buildValidationMap[routePath] = {};
-          for (const [method, data] of Object.entries(
-            methods as Record<string, any>
-          )) {
-            const { isImplemented } = data as any;
-            // In build mode, validation is disabled (schemas not bundled)
-            // Only include isImplemented flag to return 501 for unimplemented methods
-            buildValidationMap[routePath][method] = { isImplemented };
-          }
-        }
-
-        const validationMapContent = `export default ${JSON.stringify(
-          buildValidationMap,
-          null,
-          2
-        )};`;
-        const validationMapPath = `${folderPath}/schema-validation-map.js`;
-
-        // Ensure dist directory exists and write the file
-        await fs.promises.mkdir(`${folderPath}`, { recursive: true });
-        await fs.promises.writeFile(schemaPath, schemaContent, "utf-8");
-        await fs.promises.writeFile(
-          validationMapPath,
-          validationMapContent,
-          "utf-8"
+      if (!cachedSchema || !cachedValidationMap) {
+        debug(
+          "⚠️ closeBundle: No cached schema/validation map - generation may not have run"
         );
-
-        console.log(
-          `✓ Generated OpenAPI schema with ${
-            Object.keys(openApiPaths).length
-          } route(s)`
-        );
-      } catch (err) {
-        console.error("❌ Failed to write OpenAPI schema:", err);
-        // Don't throw - allow build to continue even if OpenAPI generation fails
+        return;
       }
+
+      console.log(
+        `✓ OpenAPI schema bundled with ${
+          Object.keys(cachedSchema).length
+        } route(s)`
+      );
+      debug(
+        `✓ Validation map bundled with ${
+          Object.keys(cachedValidationMap).length
+        } route(s)`
+      );
     },
 
     // Trigger HMR on file change
