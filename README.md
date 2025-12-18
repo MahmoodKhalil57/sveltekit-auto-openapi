@@ -20,21 +20,12 @@
 >
 > **Contributions are welcome!** If you'd like to help improve this project, please feel free to open issues or submit pull requests.
 
-## 🆕 Recent Updates (v0.0.9)
-
-### Production Build Support
-
-- ✅ **Fixed**: `_config` exports (Zod schemas and OpenAPI overrides) are now correctly detected in production builds
-- ✅ **Fixed**: Virtual module imports now follow Vite best practices with `virtual:` prefix
-
-Production builds now generate complete OpenAPI schemas with full validation support, not just TypeScript AST inference.
-
 ---
 
 ## ⚡ Features
 
 - **🔎 Automatic Inference**: Generates OpenAPI schemas by analyzing your `request.json<Type>()` calls.
-- **🛡️ Runtime Validation**: Validates Headers, Cookies, Query Params, and Body using JSON Schema (supports [Zod](https://zod.dev)).
+- **🛡️ Runtime Validation**: Validates Headers, Cookies, Query Params, and Body using JSON Schema - supports [StandardSchema](https://standardschema.dev/schema) schemas aka. Zod/TypeBox/Valibot/ArkType etc.
 - **📘 Interactive Documentation**: Built-in [Scalar](https://scalar.com) integration for beautiful API references.
 - **⚡ Zero Boilerplate**: Works directly with standard SvelteKit `+server.ts` files.
 - **🔄 Hot Reload**: OpenAPI schemas update instantly as you modify your routes.
@@ -205,7 +196,7 @@ export async function POST({ request }) {
 
 ### Level 3: Using Raw JSON Schema
 
-Don't want to use Zod? You can provide raw JSON Schema objects directly:
+Don't want to use StandardShema? You can provide raw JSON Schema objects directly:
 
 ```ts
 import type {
@@ -310,49 +301,6 @@ import validationRegistry from "virtual:sveltekit-auto-openapi/schema-validation
 ```
 
 > **Note**: Most users don't need to import these directly - they're used internally by `ScalarModule` and `SchemaValidationHook`.
-
-### Production Builds
-
-Production builds fully support `_config` exports:
-
-- ✅ Validation schemas (Zod or JSON Schema) are converted at build time
-- ✅ OpenAPI overrides with custom validation are applied
-- ✅ Complete OpenAPI schemas are generated (not just AST inference)
-- ✅ Runtime validation works in production using JSON Schema
-
-The plugin converts Zod schemas to JSON Schema during the build phase, then uses `@cfworker/json-schema` for fast runtime validation.
-
-## 🐛 Debugging
-
-Enable detailed logging during development by setting the `DEBUG_OPENAPI` environment variable:
-
-```bash
-DEBUG_OPENAPI=true
-```
-
-This will show:
-
-- Which route files are being processed
-- SSR module loading status
-- Found `_config` objects and their methods
-- Complete generated OpenAPI schema with all paths and operations
-- Virtual module invalidation events
-
-Example output:
-
-```
-Accessing SSR module: src/routes/users/+server.ts
-  ✓ Found _config in src/routes/users/+server.ts
-    - openapiOverride methods: [ 'GET', 'POST' ]
-
-📊 Generated OpenAPI Paths:
-  /users:
-    GET:
-      - summary: List all users
-      - parameters: 2
-      - responses: 200, 401
-      - requestBody: no
-```
 
 ## Roadmap for version 0
 
