@@ -5,6 +5,7 @@ import openApiSchemaPaths from "virtual:sveltekit-auto-openapi/schema-paths";
 import { ScalarApiReference } from "./scalar-api-reference.ts";
 import { OpenAPIObject, OpenAPISchema } from "./openapiValidationSchema.ts";
 import z from "zod";
+import { ZodStandardJSONSchemaPayload } from "zod/v4/core";
 
 type Digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
 type HttpStatusCodeStart = "1" | "2" | "3" | "4" | "5";
@@ -12,6 +13,8 @@ type HttpStatusCodeStart = "1" | "2" | "3" | "4" | "5";
 type SpecificStatusCode = `${HttpStatusCodeStart}${Digit}${Digit}`;
 
 type WildcardStatusCode = `${HttpStatusCodeStart}XX`;
+
+type Modify<T, R> = Omit<T, keyof R> & R;
 
 export type OpenApiResponseKey =
   | SpecificStatusCode
@@ -22,13 +25,23 @@ export type OpenApiResponseKey =
 export interface ValidationSchemaConfig {
   $showErrorMessage?: boolean;
   $skipValidation?: boolean;
-  schema: any; // JSON Schema or ZodType - will be converted at build time
+  schema:
+    | ZodStandardJSONSchemaPayload<unknown>
+    | OpenAPIV3.ReferenceObject
+    | OpenAPIV3.SchemaObject; // JSON Schema or ZodType - will be converted at build time
 }
 
 // Extend OpenAPI MediaTypeObject to include validation flags
-export type MediaTypeWithValidation = OpenAPIV3.MediaTypeObject & {
+export type MediaTypeWithValidation = Omit<
+  OpenAPIV3.MediaTypeObject,
+  "schema"
+> & {
   $showErrorMessage?: boolean;
   $skipValidation?: boolean;
+  schema?:
+    | ZodStandardJSONSchemaPayload<unknown>
+    | OpenAPIV3.ReferenceObject
+    | OpenAPIV3.SchemaObject; // JSON Schema or ZodType - will be converted at build time
 };
 
 // Extend OpenAPI HeaderObject to include validation config
@@ -45,7 +58,10 @@ export type ResponseObjectWithValidation = Omit<
 };
 
 // Extend OpenAPI OperationObject to include custom validation properties
-export type OperationObjectWithValidation = OpenAPIV3.OperationObject & {
+export type OperationObjectWithValidation = Omit<
+  OpenAPIV3.OperationObject,
+  "responses" | "requestBody"
+> & {
   // Custom operation-level validation properties
   $headers?: ValidationSchemaConfig;
   $query?: ValidationSchemaConfig;
@@ -54,6 +70,14 @@ export type OperationObjectWithValidation = OpenAPIV3.OperationObject & {
 
   // Override responses to support validation
   responses?: Record<string, ResponseObjectWithValidation>;
+  requestBody?: Modify<
+    OpenAPIV3.RequestBodyObject,
+    {
+      content: {
+        [media: string]: MediaTypeWithValidation;
+      };
+    }
+  >;
 };
 
 // Updated PathItemObject to use OperationObjectWithValidation
@@ -71,6 +95,25 @@ type PathItemObject = {
 export interface RouteConfig {
   openapiOverride?: PathItemObject;
 }
+
+export type RouteTypes<T extends RouteConfig> = {
+  _types: {
+    json: {
+      // @ts-expect-error - Need to ensure method keys are uppercase
+      [method in Uppercase<OpenAPIV3.HttpMethods>]: NonNullable<
+        // @ts-expect-error - Need to ensure method keys are uppercase
+        T["openapiOverride"][method]["requestBody"]["content"]["application/json"]["schema"]["~standard"]["types"]
+      >["input"];
+    };
+    returns: {
+      // @ts-expect-error - Need to ensure method keys are uppercase
+      [method in Uppercase<OpenAPIV3.HttpMethods>]: NonNullable<
+        // @ts-expect-error - Need to ensure method keys are uppercase
+        T["openapiOverride"][method]["responses"][keyof T["openapiOverride"][method]["responses"]]["content"]["application/json"]["schema"]["~standard"]["types"]
+      >["output"];
+    };
+  };
+};
 
 /**
  * @property disableOpenApi - If true, disables the OpenAPI schema endpoint.
@@ -188,11 +231,14 @@ const ScalarModule = (opts?: ScalarModuleOptions) => {
         GET: {
           $pathParams: {
             $skipValidation: skipDocsValidation,
-            schema: z.object({
-              slug: z
-                .union([z.literal(openApiPath), z.literal(scalarDocPath)])
-                .toJSONSchema(),
-            }),
+            schema: z
+              .object({
+                slug: z.union([
+                  z.literal(openApiPath),
+                  z.literal(scalarDocPath),
+                ]),
+              })
+              .toJSONSchema(),
           },
           responses: {
             200: {
@@ -201,7 +247,7 @@ const ScalarModule = (opts?: ScalarModuleOptions) => {
                 "application/json": {
                   $skipValidation: skipDocsValidation,
                   schema: showDetailedDocsSchema
-                    ? (OpenAPISchema.toJSONSchema() as unknown as OpenAPIObject)
+                    ? OpenAPISchema.toJSONSchema()
                     : (z
                         .looseObject({})
                         .toJSONSchema() as unknown as OpenAPIObject),

@@ -6,6 +6,8 @@
   <img src="https://img.shields.io/bundlejs/size/sveltekit-auto-openapi?style=for-the-badge&color=green" alt="bundle size" />
 </p>
 
+[Github](https://github.com/MahmoodKhalil57/sveltekit-auto-openapi)
+
 <p align="center">
   <strong>Type-safe OpenAPI generation and runtime validation for SvelteKit.</strong><br/>
   Write standard SvelteKit code, get documented APIs for free.
@@ -127,6 +129,10 @@ export async function POST({ request }) {
 Export a `_config` object with validation schemas to enforce runtime validation and generate detailed docs.
 
 ```ts
+import type {
+  RouteConfig,
+  RouteTypes,
+} from "sveltekit-auto-openapi/scalar-module";
 import { json } from "@sveltejs/kit";
 import z from "zod";
 
@@ -168,13 +174,19 @@ export const _config = {
       },
     },
   },
-};
+} satisfies RouteConfig;
 
 export async function POST({ request }) {
   // Request is already validated by the hook!
-  const { email }: { email: string } = await request.json();
+  const { email } = (await request.json()) as RouteTypes<
+    typeof _config
+  >["_types"]["json"]["POST"];
+
   console.log("🚀 ~ POST ~ email:", email);
-  return json({ success: true });
+
+  return json({ success: true } satisfies RouteTypes<
+    typeof _config
+  >["_types"]["returns"]["POST"]);
 }
 ```
 
@@ -197,6 +209,10 @@ export async function POST({ request }) {
 Don't want to use Zod? You can provide raw JSON Schema objects directly:
 
 ```ts
+import type {
+  RouteConfig,
+  RouteTypes,
+} from "sveltekit-auto-openapi/scalar-module";
 import { json } from "@sveltejs/kit";
 
 export const _config = {
@@ -265,19 +281,23 @@ export const _config = {
       },
     },
   },
-};
+} satisfies RouteConfig;
 
 export async function POST({ request }) {
   // Request is already validated by the hook!
-  const { email }: { email: string } = await request.json();
+  const { email } = (await request.json()) as RouteTypes<
+    typeof _config
+  >["_types"]["json"]["POST"];
   console.log("🚀 ~ POST ~ email:", email);
-  return json({ success: true });
+  return json({ success: true } satisfies RouteTypes<
+    typeof _config
+  >["_types"]["returns"]["POST"]);
 }
 ```
 
-## 📚 Documentation
+<!-- ## 📚 Documentation
 
-Read the full documentation at **[your-docs-site.com](https://www.google.com/search?q=https://your-docs-site.com)**.
+Read the full documentation at **[docs](https://github.com/MahmoodKhalil57/sveltekit-auto-openapi/blob/main/docs/01-introduction.md)**. -->
 
 ## 🔧 Advanced Usage
 
@@ -337,13 +357,12 @@ Accessing SSR module: src/routes/users/+server.ts
 
 ## Roadmap for version 0
 
-[] Add better type support for \_config
-[] Add a helper function to get typed inputs and outputs
 [] Explore edge cases and find errors
 [] Optimize vite plugin
 [] Expand docs and create a docs website
+[] Add proper tests
 [] Publish V1
 
 ## 📄 License
 
-[MIT](https://www.google.com/search?q=./LICENSE)
+[MIT](https://github.com/MahmoodKhalil57/sveltekit-auto-openapi/blob/main/LICENSE)
